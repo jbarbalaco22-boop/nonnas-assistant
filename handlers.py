@@ -89,7 +89,10 @@ def get_channel_units_live(shopify: ShopifyContext, start_date: str, end_date: s
         shopify.domain, shopify.access_token,
         date.fromisoformat(start_date), date.fromisoformat(end_date),
     )
-    buckets = {ch: {"orders": 0, "units": 0, "net_revenue": 0.0} for ch in CHANNELS}
+    buckets = {
+        ch: {"orders": 0, "units": 0, "gross": 0.0, "discounts": 0.0, "refunds": 0.0, "net_revenue": 0.0}
+        for ch in CHANNELS
+    }
     for order in orders:
         channel = classify_source(order.get("sourceName"))
         if channel is None:
@@ -98,6 +101,9 @@ def get_channel_units_live(shopify: ShopifyContext, start_date: str, end_date: s
         units = sum(node.get("quantity", 0) for node in order.get("lineItems", {}).get("nodes", []))
         buckets[channel]["orders"] += 1
         buckets[channel]["units"] += units
+        buckets[channel]["gross"] += breakdown["gross"]
+        buckets[channel]["discounts"] += breakdown["discounts"]
+        buckets[channel]["refunds"] += breakdown["refunds"]
         buckets[channel]["net_revenue"] += breakdown["net"]
 
     return {
