@@ -91,6 +91,24 @@ def _get_shopify_context() -> ShopifyContext:
     return ShopifyContext(domain, access_token)
 
 
+MAX_TOOL_ITERATIONS = 6  # safety cap, independent of the Console-level monthly spend limit —
+# a well-formed question shouldn't need more than a handful of tool calls to answer. If it
+# does, something's more likely wrong (a confused model, a bad loop) than genuinely needing
+# more data, so stop and say so rather than silently spending on retries.
+
+# System prompt and tool schemas are identical on every call — including every round-trip
+# within a single question's tool-use loop, and across separate questions asked close together.
+# Marking the last block of each as a cache breakpoint means only the first call in a window
+# pays full price; everything after reads the cache at 10% of the input token cost. Using the
+# 1-hour cache (not the 5-minute default) since usage here is a handful of people asking
+# occasional questions, not constant traffic — a 5-minute window would miss most of that reuse.
+_CACHE_CONTROL = {"type": "ephemeral", "ttl": "1h"}
+CACHED_SYSTEM = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": _CACHE_CONTROL}]
+CACHED_TOOLS = [dict(t) for t in TOOL_SCHEMAS]
+if CACHED_TOOLS:
+    CACHED_TOOLS[-1] = {**CACHED_TOOLS[-1], "cache_control": _CACHE_CONTROL}
+
+
 def ask(question: str, client: anthropic.Anthropic | None = None) -> str:
     """Runs one question through the tool-use loop to completion, returns the final answer text."""
     client = client or anthropic.Anthropic()
@@ -99,12 +117,12 @@ def ask(question: str, client: anthropic.Anthropic | None = None) -> str:
 
     messages = [{"role": "user", "content": question}]
 
-    while True:
+    for _ in range(MAX_TOOL_ITERATIONS):
         response = client.messages.create(
             model=MODEL,
             max_tokens=2048,
-            system=SYSTEM_PROMPT,
-            tools=TOOL_SCHEMAS,
+            system=CACHED_SYSTEM,
+            tools=CACHED_TOOLS,
             messages=messages,
         )
         messages.append({"role": "assistant", "content": response.content})
@@ -123,6 +141,13 @@ def ask(question: str, client: anthropic.Anthropic | None = None) -> str:
                 "content": _to_json_text(result),
             })
         messages.append({"role": "user", "content": tool_results})
+    else:
+        return (
+            f"I wasn't able to finish answering this within the usual number of steps "
+            f"({MAX_TOOL_ITERATIONS} tool calls) — something may be off with the question or "
+            f"the data rather than this genuinely needing more lookups. Try rephrasing or "
+            f"narrowing the date range; let a human know if this keeps happening."
+        )
 
 
 def _to_json_text(result: dict) -> str:
