@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 
 from handlers import QboContext, ShopifyContext
 from nonnas_shared.config import require_env
-from nonnas_shared.connectors import qbo_client as shared_qbo
 from nonnas_shared.connectors import shopify_client as shared_shopify
+from nonnas_shared.connectors.qbo_auth import refresh_access_token
 from tools import TOOL_SCHEMAS, dispatch
 
 load_dotenv()
@@ -63,7 +63,7 @@ def _get_qbo_context() -> QboContext:
     client_secret = require_env("QBO_CLIENT_SECRET")
     refresh_token = require_env("QBO_REFRESH_TOKEN")
     realm_id = require_env("QBO_REALM_ID")
-    tokens = shared_qbo.refresh_access_token(client_id, client_secret, refresh_token)
+    tokens = refresh_access_token(client_id, client_secret, refresh_token)
     _persist_refresh_token(tokens["refresh_token"])
     return QboContext(tokens["access_token"], realm_id, QBO_ENVIRONMENT)
 
@@ -157,8 +157,10 @@ def _to_json_text(result: dict) -> str:
 
 
 if __name__ == "__main__":
+    import io
     import sys
 
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
     question = " ".join(sys.argv[1:]) or "What was TikTok's contribution margin last month?"
     print(f"Q: {question}\n")
     print(ask(question))
