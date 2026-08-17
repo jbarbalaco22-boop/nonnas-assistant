@@ -81,24 +81,21 @@
     justify-content: space-between;
     align-items: center;
     gap: 16px;
+    flex-shrink: 0;
   }
   header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
-  #view-tabs { display: flex; gap: 4px; }
-  #view-tabs button {
-    border: none; background: none; padding: 6px 14px; border-radius: 8px;
-    font-size: 13px; cursor: pointer; color: var(--muted);
-  }
-  #view-tabs button.active { background: var(--assistant-bubble); color: var(--text); font-weight: 600; }
+  #header-right { display: flex; align-items: center; gap: 16px; }
   #signed-in-as { font-size: 13px; color: var(--muted); white-space: nowrap; }
   #signed-in-as button {
     background: none; border: none; color: var(--accent); cursor: pointer;
     font-size: 13px; text-decoration: underline; padding: 0; margin-left: 8px;
   }
 
-  .view { flex: 1; overflow-y: auto; min-width: 0; }
+  /* ---- Main layout: dashboard + toggleable chat panel ---- */
+  #main-layout { flex: 1; display: flex; min-height: 0; }
 
   /* ---- Dashboard view ---- */
-  #dashboard-view { padding: 24px; }
+  #dashboard-view { flex: 1; overflow-y: auto; min-width: 0; padding: 24px; }
   #dashboard-status { color: var(--muted); font-size: 14px; }
   #dashboard-status.error { color: var(--error); }
   #freshness-bar { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
@@ -144,8 +141,45 @@
     padding: 10px 14px; border-radius: 8px; line-height: 1.5;
   }
 
-  /* ---- Chat view ---- */
-  #chat-view { display: flex; flex-direction: column; }
+  /* ---- Chat toggle button ---- */
+  #chat-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #chat-toggle-btn:hover { background: var(--assistant-bubble); }
+  #chat-toggle-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  /* ---- Chat panel (right-hand side, toggleable) ---- */
+  #chat-panel {
+    width: 380px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
+    background: var(--panel);
+  }
+  #chat-panel.hidden { display: none; }
+  #chat-panel-header {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #chat-panel-header span { font-size: 14px; font-weight: 600; }
+  #chat-close-btn {
+    border: none; background: none; font-size: 18px; line-height: 1; cursor: pointer;
+    color: var(--muted); padding: 4px;
+  }
   #messages {
     flex: 1;
     overflow-y: auto;
@@ -154,7 +188,7 @@
     flex-direction: column;
     gap: 14px;
   }
-  .msg { max-width: 75%; min-width: 0; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
+  .msg { max-width: 85%; min-width: 0; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
   .msg.user { align-self: flex-end; background: var(--user-bubble); color: white; border-bottom-right-radius: 4px; }
   .msg.assistant { align-self: flex-start; background: var(--assistant-bubble); color: var(--text); border-bottom-left-radius: 4px; }
   .msg.error { align-self: flex-start; background: #fbe4de; color: var(--error); border-bottom-left-radius: 4px; }
@@ -163,9 +197,10 @@
   #input-bar {
     display: flex;
     gap: 10px;
-    padding: 14px 20px;
+    padding: 14px 16px;
     border-top: 1px solid var(--border);
     background: var(--panel);
+    flex-shrink: 0;
   }
   #question-input {
     flex: 1;
@@ -187,6 +222,22 @@
   }
   #send-btn:hover { background: var(--accent-dark); }
   #send-btn:disabled { background: var(--muted); cursor: not-allowed; }
+
+  /* ---- Mobile: chat panel becomes a full-screen overlay instead of a side column ---- */
+  @media (max-width: 768px) {
+    #chat-panel:not(.hidden) {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      z-index: 100;
+    }
+    #chat-panel-header { display: flex; }
+    #company-stats { gap: 20px; }
+    .stat .stat-value { font-size: 22px; }
+    #dashboard-view { padding: 16px; }
+    header { padding: 10px 14px; }
+    #chat-toggle-btn span.label { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -204,28 +255,33 @@
 <div id="app-screen">
   <header>
     <h1>Harvest</h1>
-    <nav id="view-tabs">
-      <button class="tab-btn active" data-view="dashboard-view">Dashboard</button>
-      <button class="tab-btn" data-view="chat-view">Chat</button>
-    </nav>
-    <div id="signed-in-as"></div>
+    <div id="header-right">
+      <button id="chat-toggle-btn">💬 <span class="label">Chat</span></button>
+      <div id="signed-in-as"></div>
+    </div>
   </header>
 
-  <div id="dashboard-view" class="view">
-    <div id="dashboard-status">Loading dashboard...</div>
-    <div id="dashboard-content" style="display:none">
-      <div id="freshness-bar"></div>
-      <div id="company-card" class="card"></div>
-      <div id="channel-grid"></div>
-      <div id="dashboard-caveat"></div>
+  <div id="main-layout">
+    <div id="dashboard-view">
+      <div id="dashboard-status">Loading dashboard...</div>
+      <div id="dashboard-content" style="display:none">
+        <div id="freshness-bar"></div>
+        <div id="company-card" class="card"></div>
+        <div id="channel-grid"></div>
+        <div id="dashboard-caveat"></div>
+      </div>
     </div>
-  </div>
 
-  <div id="chat-view" class="view" style="display:none">
-    <div id="messages"></div>
-    <div id="input-bar">
-      <textarea id="question-input" rows="1" placeholder="Ask a question about revenue, spend, margin, units..."></textarea>
-      <button id="send-btn">Send</button>
+    <div id="chat-panel" class="hidden">
+      <div id="chat-panel-header">
+        <span>Chat</span>
+        <button id="chat-close-btn">✕</button>
+      </div>
+      <div id="messages"></div>
+      <div id="input-bar">
+        <textarea id="question-input" rows="1" placeholder="Ask a question about revenue, spend, margin, units..."></textarea>
+        <button id="send-btn">Send</button>
+      </div>
     </div>
   </div>
 </div>
@@ -287,17 +343,24 @@
     loadDashboard();
   }
 
-  // ---- View switching ----
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      document.querySelectorAll(".view").forEach((v) => (v.style.display = "none"));
-      const view = document.getElementById(btn.dataset.view);
-      view.style.display = btn.dataset.view === "chat-view" ? "flex" : "block";
-      if (btn.dataset.view === "chat-view") questionInput.focus();
-    });
+  // ---- Chat panel show/hide ----
+  const chatPanel = document.getElementById("chat-panel");
+  const chatToggleBtn = document.getElementById("chat-toggle-btn");
+  const chatCloseBtn = document.getElementById("chat-close-btn");
+
+  function openChat() {
+    chatPanel.classList.remove("hidden");
+    chatToggleBtn.classList.add("active");
+    questionInput.focus();
+  }
+  function closeChat() {
+    chatPanel.classList.add("hidden");
+    chatToggleBtn.classList.remove("active");
+  }
+  chatToggleBtn.addEventListener("click", () => {
+    chatPanel.classList.contains("hidden") ? openChat() : closeChat();
   });
+  chatCloseBtn.addEventListener("click", closeChat);
 
   // ---- Dashboard ----
   function fmtCurrency(n) {
