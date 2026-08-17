@@ -16,6 +16,9 @@
     --user-bubble: #7a5c3e;
     --assistant-bubble: #eee9e2;
     --error: #b3432b;
+    --success: #3f7d4f;
+    --warn-bg: #fbf1de;
+    --warn-text: #93650f;
   }
   * { box-sizing: border-box; }
   body {
@@ -68,23 +71,81 @@
   #login-box button:hover { background: var(--accent-dark); }
   #login-error { color: var(--error); font-size: 13px; margin-top: 10px; min-height: 18px; }
 
-  /* ---- Chat screen ---- */
-  #chat-screen { display: none; flex: 1; flex-direction: column; height: 100vh; }
+  /* ---- App shell ---- */
+  #app-screen { display: none; flex: 1; flex-direction: column; height: 100vh; min-width: 0; }
   header {
-    padding: 14px 20px;
+    padding: 12px 20px;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 16px;
   }
-  header h1 { font-size: 16px; margin: 0; }
-  #signed-in-as { font-size: 13px; color: var(--muted); }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  #view-tabs { display: flex; gap: 4px; }
+  #view-tabs button {
+    border: none; background: none; padding: 6px 14px; border-radius: 8px;
+    font-size: 13px; cursor: pointer; color: var(--muted);
+  }
+  #view-tabs button.active { background: var(--assistant-bubble); color: var(--text); font-weight: 600; }
+  #signed-in-as { font-size: 13px; color: var(--muted); white-space: nowrap; }
   #signed-in-as button {
     background: none; border: none; color: var(--accent); cursor: pointer;
     font-size: 13px; text-decoration: underline; padding: 0; margin-left: 8px;
   }
 
+  .view { flex: 1; overflow-y: auto; min-width: 0; }
+
+  /* ---- Dashboard view ---- */
+  #dashboard-view { padding: 24px; }
+  #dashboard-status { color: var(--muted); font-size: 14px; }
+  #dashboard-status.error { color: var(--error); }
+  #freshness-bar { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  #company-card { margin-bottom: 20px; }
+  #company-card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 12px; }
+  #company-stats { display: flex; gap: 32px; flex-wrap: wrap; }
+  .stat .stat-value { font-size: 26px; font-weight: 700; }
+  .stat .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .positive { color: var(--success); }
+  .negative { color: var(--error); }
+
+  #channel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .channel-card h3 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+  .caveat-badge {
+    font-size: 10px; background: var(--warn-bg); color: var(--warn-text);
+    padding: 2px 6px; border-radius: 4px; font-weight: 600; letter-spacing: 0.03em;
+  }
+  .channel-card .revenue-share { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .channel-card .primary-stat { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
+  .channel-card .primary-stat-label { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+  .metric-row div { display: flex; justify-content: space-between; }
+  .metric-row .metric-label { color: var(--muted); }
+  #dashboard-caveat {
+    margin-top: 20px; font-size: 12px; color: var(--muted); background: var(--warn-bg);
+    padding: 10px 14px; border-radius: 8px; line-height: 1.5;
+  }
+
+  /* ---- Chat view ---- */
+  #chat-view { display: flex; flex-direction: column; }
   #messages {
     flex: 1;
     overflow-y: auto;
@@ -140,15 +201,32 @@
   </div>
 </div>
 
-<div id="chat-screen">
+<div id="app-screen">
   <header>
     <h1>Harvest</h1>
+    <nav id="view-tabs">
+      <button class="tab-btn active" data-view="dashboard-view">Dashboard</button>
+      <button class="tab-btn" data-view="chat-view">Chat</button>
+    </nav>
     <div id="signed-in-as"></div>
   </header>
-  <div id="messages"></div>
-  <div id="input-bar">
-    <textarea id="question-input" rows="1" placeholder="Ask a question about revenue, spend, margin, units..."></textarea>
-    <button id="send-btn">Send</button>
+
+  <div id="dashboard-view" class="view">
+    <div id="dashboard-status">Loading dashboard...</div>
+    <div id="dashboard-content" style="display:none">
+      <div id="freshness-bar"></div>
+      <div id="company-card" class="card"></div>
+      <div id="channel-grid"></div>
+      <div id="dashboard-caveat"></div>
+    </div>
+  </div>
+
+  <div id="chat-view" class="view" style="display:none">
+    <div id="messages"></div>
+    <div id="input-bar">
+      <textarea id="question-input" rows="1" placeholder="Ask a question about revenue, spend, margin, units..."></textarea>
+      <button id="send-btn">Send</button>
+    </div>
   </div>
 </div>
 
@@ -157,9 +235,11 @@
   // config injection for one URL that changes essentially never.
   const API_BASE = "https://nonnas-assistant.onrender.com";
   const TOKEN_KEY = "nonnas_assistant_token";
+  const CHANNELS = ["DTC", "TikTok", "Amazon", "Wholesale"];
+  const UNRELIABLE_CHANNELS = new Set(["Amazon", "Wholesale"]);
 
   const loginScreen = document.getElementById("login-screen");
-  const chatScreen = document.getElementById("chat-screen");
+  const appScreen = document.getElementById("app-screen");
   const tokenInput = document.getElementById("token-input");
   const loginBtn = document.getElementById("login-btn");
   const loginError = document.getElementById("login-error");
@@ -167,6 +247,8 @@
   const messagesEl = document.getElementById("messages");
   const questionInput = document.getElementById("question-input");
   const sendBtn = document.getElementById("send-btn");
+  const dashboardStatus = document.getElementById("dashboard-status");
+  const dashboardContent = document.getElementById("dashboard-content");
 
   function getStoredToken() {
     // A token in the URL (?token=...) overrides and refreshes what's stored, so a bookmarked
@@ -194,17 +276,132 @@
     }
   }
 
-  function showChat(username, token) {
+  function showApp(username) {
     loginScreen.style.display = "none";
-    chatScreen.style.display = "flex";
+    appScreen.style.display = "flex";
     signedInAs.innerHTML = `Signed in as ${username} <button id="signout-btn">Sign out</button>`;
     document.getElementById("signout-btn").addEventListener("click", () => {
       localStorage.removeItem(TOKEN_KEY);
       window.location.reload();
     });
-    questionInput.focus();
+    loadDashboard();
   }
 
+  // ---- View switching ----
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.querySelectorAll(".view").forEach((v) => (v.style.display = "none"));
+      const view = document.getElementById(btn.dataset.view);
+      view.style.display = btn.dataset.view === "chat-view" ? "flex" : "block";
+      if (btn.dataset.view === "chat-view") questionInput.focus();
+    });
+  });
+
+  // ---- Dashboard ----
+  function fmtCurrency(n) {
+    if (n === null || n === undefined) return "—";
+    return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  function fmtPercent(n) {
+    if (n === null || n === undefined) return "—";
+    return (n * 100).toFixed(1) + "%";
+  }
+  function fmtNumber(n) {
+    if (n === null || n === undefined) return "—";
+    return n.toLocaleString("en-US");
+  }
+  function fmtDate(iso) {
+    // start_date/end_date are date-only strings ("2026-08-01"), which JS parses as UTC
+    // midnight - displaying that in the browser's local time zone can shift it back a day
+    // (e.g. renders as "Jul 31" for someone west of UTC). Force UTC on both the parse and the
+    // display so the date shown always matches the date the backend actually meant.
+    return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
+    });
+  }
+  function fmtDateTime(iso) {
+    return new Date(iso).toLocaleString("en-US", {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+  }
+
+  function renderDashboard(data) {
+    document.getElementById("freshness-bar").textContent =
+      `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.generated_at)}`;
+
+    const c = data.company;
+    const contribClass = c.contribution >= 0 ? "positive" : "negative";
+    document.getElementById("company-card").innerHTML = `
+      <h2>Company Overview</h2>
+      <div id="company-stats">
+        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div></div>
+        <div class="stat"><div class="stat-value ${contribClass}">${fmtCurrency(c.contribution)}</div><div class="stat-label">Contribution</div></div>
+        <div class="stat"><div class="stat-value ${contribClass}">${fmtPercent(c.contribution_pct)}</div><div class="stat-label">Contribution Margin</div></div>
+      </div>
+    `;
+
+    const grid = document.getElementById("channel-grid");
+    grid.innerHTML = "";
+    for (const ch of CHANNELS) {
+      const m = data.channels[ch];
+      if (!m) continue;
+      const contribClass = m.contribution >= 0 ? "positive" : "negative";
+      const badge = UNRELIABLE_CHANNELS.has(ch)
+        ? `<span class="caveat-badge" title="See caveat below">LIMITED DATA</span>`
+        : "";
+      const card = document.createElement("div");
+      card.className = "card channel-card";
+      card.innerHTML = `
+        <h3>${ch} ${badge}</h3>
+        <div class="revenue-share">${fmtPercent(m.revenue_share)} of total revenue</div>
+        <div class="primary-stat ${contribClass}">${fmtCurrency(m.contribution)}</div>
+        <div class="primary-stat-label">Contribution (${fmtPercent(m.contribution_pct)} margin)</div>
+        <div class="metric-row">
+          <div><span class="metric-label">Net Sales</span><span>${fmtCurrency(m.net_sales)}</span></div>
+          <div><span class="metric-label">Orders</span><span>${fmtNumber(m.orders)}</span></div>
+          <div><span class="metric-label">AOV</span><span>${fmtCurrency(m.aov)}</span></div>
+          <div><span class="metric-label">Units</span><span>${fmtNumber(m.units)}</span></div>
+          <div><span class="metric-label">Discount Rate</span><span>${fmtPercent(m.discount_rate)}</span></div>
+          <div><span class="metric-label">Refund Rate</span><span>${fmtPercent(m.refund_rate)}</span></div>
+          <div><span class="metric-label">ROAS</span><span>${m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—"}</span></div>
+          <div><span class="metric-label">Ad Spend</span><span>${fmtCurrency(m.ads)}</span></div>
+        </div>
+      `;
+      grid.appendChild(card);
+    }
+
+    document.getElementById("dashboard-caveat").textContent = data.caveat || "";
+  }
+
+  async function loadDashboard() {
+    dashboardStatus.textContent = "Loading dashboard...";
+    dashboardStatus.className = "";
+    dashboardStatus.style.display = "block";
+    dashboardContent.style.display = "none";
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const res = await fetch(`${API_BASE}/dashboard`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        dashboardStatus.textContent = data.detail || "Couldn't load the dashboard.";
+        dashboardStatus.className = "error";
+        return;
+      }
+      renderDashboard(data);
+      dashboardStatus.style.display = "none";
+      dashboardContent.style.display = "block";
+    } catch (e) {
+      dashboardStatus.textContent = "Couldn't reach the server — check your connection and try again.";
+      dashboardStatus.className = "error";
+    }
+  }
+
+  // ---- Chat ----
   function addMessage(text, className) {
     const el = document.createElement("div");
     el.className = `msg ${className}`;
@@ -257,6 +454,7 @@
     }
   });
 
+  // ---- Login ----
   loginBtn.addEventListener("click", async () => {
     const token = tokenInput.value.trim();
     if (!token) return;
@@ -266,7 +464,7 @@
     loginBtn.disabled = false;
     if (username) {
       localStorage.setItem(TOKEN_KEY, token);
-      showChat(username, token);
+      showApp(username);
     } else {
       loginError.textContent = "That token wasn't recognized. Check it and try again.";
     }
@@ -280,7 +478,7 @@
     if (!token) return; // show login screen (default state)
     const username = await tryLogin(token);
     if (username) {
-      showChat(username, token);
+      showApp(username);
     } else {
       localStorage.removeItem(TOKEN_KEY);
     }
