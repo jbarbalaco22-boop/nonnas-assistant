@@ -1,0 +1,6 @@
+anthropic>=0.40
+python-dotenv>=1.0
+
+# Shared QBO/Shopify connectors, also used by nonnas-finance-audit and nonnas-daily-operator.
+# Installed with: pip install -e ../nonnas-shared
+-e ../nonnas-shared

@@ -1,0 +1,109 @@
+"""Tool handler functions — the actual work behind each tool the assistant can call.
+All read-only: these only ever call fetch_*/compute_* functions from nonnas_shared,
+never anything that writes to QBO or Shopify.
+"""
+import glob
+import json
+import os
+from datetime import date, datetime
+
+from nonnas_shared.connectors import channel_financials
+from nonnas_shared.connectors import qbo_client as shared_qbo
+from nonnas_shared.connectors import shopify_client as shared_shopify
+from nonnas_shared.connectors.shopify_channels import classify_source
+
+CHANNELS = ["DTC", "TikTok", "Amazon", "Wholesale"]
+
+DAILY_PACKET_GLOB = os.path.join(
+    os.path.dirname(__file__), "..", "nonnas-daily-operator", "artifacts", "daily_packet_*.json"
+)
+
+UNITS_CAVEAT = (
+    "Amazon and Wholesale unit/order counts here are known-incomplete. Amazon orders rarely "
+    "flow through Shopify at all (a real Amazon connection doesn't exist yet). Wholesale "
+    "revenue is typically recorded as a bank Deposit with no Item/Quantity, so it often shows "
+    "zero units even when real sales happened. Treat DTC and TikTok numbers as reliable; treat "
+    "Amazon and Wholesale as directional at best."
+)
+
+
+class QboContext:
+    """Bundles what a live QBO call needs — access token already refreshed by the caller,
+    not re-derived per tool call (refreshing on every tool call would burn through QBO's
+    rotating refresh token far faster than necessary for one conversation)."""
+
+    def __init__(self, access_token: str, realm_id: str, environment: str = "production"):
+        self.access_token = access_token
+        self.realm_id = realm_id
+        self.environment = environment
+
+
+class ShopifyContext:
+    def __init__(self, domain: str, access_token: str):
+        self.domain = domain
+        self.access_token = access_token
+
+
+def get_daily_snapshot() -> dict:
+    """Reads the most recently generated Daily Packet — the default, fast path. Every response
+    built from this MUST surface generated_at so the caller can tell the user how fresh this is.
+    """
+    matches = sorted(glob.glob(DAILY_PACKET_GLOB))
+    if not matches:
+        return {"error": "No Daily Packet has been generated yet — nonnas-daily-operator hasn't run."}
+    with open(matches[-1], encoding="utf-8") as f:
+        packet = json.load(f)
+    return packet
+
+
+def get_channel_financials_live(qbo: QboContext, start_date: str, end_date: str, channel: str | None = None) -> dict:
+    """Live pull: revenue/COGS/3PL/ads/fees/contribution margin per channel for an arbitrary
+    date range. Use this for trend analysis (call it for several periods and compare) or when
+    the cached Daily Packet isn't current enough for the question being asked.
+    """
+    account_map = channel_financials.load_qbo_account_map()
+    pl_data = shared_qbo.fetch_profit_and_loss_by_class(
+        qbo.realm_id, qbo.access_token,
+        date.fromisoformat(start_date), date.fromisoformat(end_date),
+        environment=qbo.environment,
+    )
+    channels_to_compute = [channel] if channel else CHANNELS
+    results = {
+        ch: channel_financials.compute_channel_margin(pl_data, ch, account_map)
+        for ch in channels_to_compute
+    }
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "pulled_at": datetime.utcnow().isoformat() + "Z",
+        "channels": results,
+    }
+
+
+def get_channel_units_live(shopify: ShopifyContext, start_date: str, end_date: str) -> dict:
+    """Live pull: orders/units/revenue per channel for an arbitrary date range, straight from
+    Shopify. Always includes the Amazon/Wholesale reliability caveat — never state those two
+    channels' figures as complete without it.
+    """
+    orders = shared_shopify.fetch_orders(
+        shopify.domain, shopify.access_token,
+        date.fromisoformat(start_date), date.fromisoformat(end_date),
+    )
+    buckets = {ch: {"orders": 0, "units": 0, "net_revenue": 0.0} for ch in CHANNELS}
+    for order in orders:
+        channel = classify_source(order.get("sourceName"))
+        if channel is None:
+            continue
+        breakdown = shared_shopify.order_revenue_breakdown(order)
+        units = sum(node.get("quantity", 0) for node in order.get("lineItems", {}).get("nodes", []))
+        buckets[channel]["orders"] += 1
+        buckets[channel]["units"] += units
+        buckets[channel]["net_revenue"] += breakdown["net"]
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "pulled_at": datetime.utcnow().isoformat() + "Z",
+        "channels": buckets,
+        "caveat": UNITS_CAVEAT,
+    }
