@@ -1,6 +1,6 @@
 """Thin HTTP wrapper around assistant.ask() — this is what a web frontend actually talks to.
-CORS is still wide open for now since there's no frontend origin to lock it down to yet — that
-still needs tightening once a frontend exists. Auth is now in place (see auth.py).
+CORS is locked to the deployed frontend's origin (see ALLOWED_ORIGINS below). Auth is in place
+(see auth.py).
 """
 import sys
 
@@ -28,9 +28,16 @@ from handlers import get_dashboard_data
 logger = logging.getLogger("nonnas_assistant")
 app = FastAPI(title="Harvest")
 
+# The deployed Render Static Site, plus localhost for local dev testing of the frontend against
+# this same deployed backend (the pattern used throughout this build).
+ALLOWED_ORIGINS = [
+    "https://nonnas-assistant-frontend.onrender.com",
+    "http://localhost:8080",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: lock to the actual frontend origin once one exists
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
