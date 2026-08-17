@@ -39,6 +39,17 @@ def test_ask_rejects_wrong_token():
     assert response.status_code == 401
 
 
+def test_whoami_returns_matched_username():
+    response = client.get("/whoami", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    assert response.json() == {"user": "test_user"}
+
+
+def test_whoami_rejects_missing_auth():
+    response = client.get("/whoami")
+    assert response.status_code == 401
+
+
 def test_ask_returns_answer_with_valid_token(monkeypatch):
     monkeypatch.setattr(server, "ask", lambda question: f"answer to: {question}")
     response = client.post("/ask", json={"question": "how's DTC doing?"}, headers=AUTH_HEADER)

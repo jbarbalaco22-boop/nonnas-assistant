@@ -29,7 +29,7 @@ app = FastAPI(title="nonnas-assistant")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # TODO: lock to the actual frontend origin once one exists
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -45,6 +45,13 @@ class AskResponse(BaseModel):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/whoami")
+def whoami(user: str = Depends(verify_token)) -> dict:
+    """Lets the frontend validate a token immediately on load (and show who's logged in)
+    instead of waiting for the first real question to fail with a 401."""
+    return {"user": user}
 
 
 @app.post("/ask", response_model=AskResponse)
