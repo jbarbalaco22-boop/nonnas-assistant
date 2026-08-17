@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nonna's Assistant</title>
+<style>
+  :root {
+    --bg: #f7f5f2;
+    --panel: #ffffff;
+    --border: #e0dcd5;
+    --text: #2b2620;
+    --muted: #8a8378;
+    --accent: #7a5c3e;
+    --accent-dark: #5f4630;
+    --user-bubble: #7a5c3e;
+    --assistant-bubble: #eee9e2;
+    --error: #b3432b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- Login screen ---- */
+  #login-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #login-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+  }
+  #login-box h1 { font-size: 20px; margin: 0 0 8px; }
+  #login-box p { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+  #login-box input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  #login-box button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #login-box button:hover { background: var(--accent-dark); }
+  #login-error { color: var(--error); font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  /* ---- Chat screen ---- */
+  #chat-screen { display: none; flex: 1; flex-direction: column; height: 100vh; }
+  header {
+    padding: 14px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  #signed-in-as { font-size: 13px; color: var(--muted); }
+  #signed-in-as button {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    font-size: 13px; text-decoration: underline; padding: 0; margin-left: 8px;
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg { max-width: 75%; min-width: 0; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user-bubble); color: white; border-bottom-right-radius: 4px; }
+  .msg.assistant { align-self: flex-start; background: var(--assistant-bubble); color: var(--text); border-bottom-left-radius: 4px; }
+  .msg.error { align-self: flex-start; background: #fbe4de; color: var(--error); border-bottom-left-radius: 4px; }
+  .msg.pending { align-self: flex-start; background: var(--assistant-bubble); color: var(--muted); font-style: italic; }
+
+  #input-bar {
+    display: flex;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+  }
+  #question-input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 14px;
+    resize: none;
+    font-family: inherit;
+  }
+  #send-btn {
+    padding: 0 20px;
+    border: none;
+    border-radius: 20px;
+    background: var(--accent);
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #send-btn:hover { background: var(--accent-dark); }
+  #send-btn:disabled { background: var(--muted); cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div id="login-box">
+    <h1>Nonna's Assistant</h1>
+    <p>Paste your access token to sign in.</p>
+    <input id="token-input" type="password" placeholder="Access token" autocomplete="off">
+    <button id="login-btn">Sign in</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<div id="chat-screen">
+  <header>
+    <h1>Nonna's Assistant</h1>
+    <div id="signed-in-as"></div>
+  </header>
+  <div id="messages"></div>
+  <div id="input-bar">
+    <textarea id="question-input" rows="1" placeholder="Ask a question about revenue, spend, margin, units..."></textarea>
+    <button id="send-btn">Send</button>
+  </div>
+</div>
+
+<script>
+  // Hardcoded on purpose — this is a small, single-purpose internal tool, not worth build-time
+  // config injection for one URL that changes essentially never.
+  const API_BASE = "https://nonnas-assistant.onrender.com";
+  const TOKEN_KEY = "nonnas_assistant_token";
+
+  const loginScreen = document.getElementById("login-screen");
+  const chatScreen = document.getElementById("chat-screen");
+  const tokenInput = document.getElementById("token-input");
+  const loginBtn = document.getElementById("login-btn");
+  const loginError = document.getElementById("login-error");
+  const signedInAs = document.getElementById("signed-in-as");
+  const messagesEl = document.getElementById("messages");
+  const questionInput = document.getElementById("question-input");
+  const sendBtn = document.getElementById("send-btn");
+
+  function getStoredToken() {
+    // A token in the URL (?token=...) overrides and refreshes what's stored, so a bookmarked
+    // per-person link always works even if localStorage was cleared.
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get("token");
+    if (urlToken) {
+      localStorage.setItem(TOKEN_KEY, urlToken);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return urlToken;
+    }
+    return localStorage.getItem(TOKEN_KEY);
+  }
+
+  async function tryLogin(token) {
+    try {
+      const res = await fetch(`${API_BASE}/whoami`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.user;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function showChat(username, token) {
+    loginScreen.style.display = "none";
+    chatScreen.style.display = "flex";
+    signedInAs.innerHTML = `Signed in as ${username} <button id="signout-btn">Sign out</button>`;
+    document.getElementById("signout-btn").addEventListener("click", () => {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.reload();
+    });
+    questionInput.focus();
+  }
+
+  function addMessage(text, className) {
+    const el = document.createElement("div");
+    el.className = `msg ${className}`;
+    el.textContent = text;
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return el;
+  }
+
+  async function sendQuestion() {
+    const question = questionInput.value.trim();
+    if (!question) return;
+    const token = localStorage.getItem(TOKEN_KEY);
+
+    addMessage(question, "user");
+    questionInput.value = "";
+    sendBtn.disabled = true;
+    const pending = addMessage("Thinking...", "pending");
+
+    try {
+      const res = await fetch(`${API_BASE}/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+      pending.remove();
+      if (!res.ok) {
+        addMessage(data.detail || "Something went wrong.", "error");
+      } else {
+        addMessage(data.answer, "assistant");
+      }
+    } catch (e) {
+      pending.remove();
+      addMessage("Couldn't reach the assistant — check your connection and try again.", "error");
+    } finally {
+      sendBtn.disabled = false;
+      questionInput.focus();
+    }
+  }
+
+  sendBtn.addEventListener("click", sendQuestion);
+  questionInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendQuestion();
+    }
+  });
+
+  loginBtn.addEventListener("click", async () => {
+    const token = tokenInput.value.trim();
+    if (!token) return;
+    loginBtn.disabled = true;
+    loginError.textContent = "";
+    const username = await tryLogin(token);
+    loginBtn.disabled = false;
+    if (username) {
+      localStorage.setItem(TOKEN_KEY, token);
+      showChat(username, token);
+    } else {
+      loginError.textContent = "That token wasn't recognized. Check it and try again.";
+    }
+  });
+  tokenInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") loginBtn.click();
+  });
+
+  (async function init() {
+    const token = getStoredToken();
+    if (!token) return; // show login screen (default state)
+    const username = await tryLogin(token);
+    if (username) {
+      showChat(username, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  })();
+</script>
+
+</body>
+</html>
