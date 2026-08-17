@@ -15,13 +15,15 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import logging
+from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from assistant import ask
+from assistant import _get_qbo_context, _get_shopify_context, ask
 from auth import verify_token
+from handlers import get_dashboard_data
 
 logger = logging.getLogger("nonnas_assistant")
 app = FastAPI(title="Harvest")
@@ -52,6 +54,29 @@ def whoami(user: str = Depends(verify_token)) -> dict:
     """Lets the frontend validate a token immediately on load (and show who's logged in)
     instead of waiting for the first real question to fail with a 401."""
     return {"user": user}
+
+
+@app.get("/dashboard")
+def dashboard_endpoint(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    user: str = Depends(verify_token),
+) -> dict:
+    """Defaults to month-to-date if no explicit range is given. Always computed live (see
+    get_dashboard_data's docstring for why) - this is the endpoint the dashboard UI polls on
+    load, not something meant to be hit at high frequency."""
+    if not end_date:
+        end_date = date.today().isoformat()
+    if not start_date:
+        start_date = date.today().replace(day=1).isoformat()
+
+    qbo = _get_qbo_context()
+    shopify = _get_shopify_context()
+    try:
+        return get_dashboard_data(qbo, shopify, start_date, end_date)
+    except Exception as e:
+        logger.exception("dashboard failed for %s to %s", start_date, end_date)
+        raise HTTPException(status_code=502, detail=f"Failed to load dashboard: {e}") from e
 
 
 @app.post("/ask", response_model=AskResponse)

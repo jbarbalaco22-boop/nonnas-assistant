@@ -5,7 +5,7 @@ never anything that writes to QBO or Shopify.
 import glob
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from nonnas_shared.connectors import channel_financials
 from nonnas_shared.connectors import qbo_client as shared_qbo
@@ -75,7 +75,7 @@ def get_channel_financials_live(qbo: QboContext, start_date: str, end_date: str,
     return {
         "start_date": start_date,
         "end_date": end_date,
-        "pulled_at": datetime.utcnow().isoformat() + "Z",
+        "pulled_at": datetime.now(timezone.utc).isoformat(),
         "channels": results,
     }
 
@@ -109,7 +109,55 @@ def get_channel_units_live(shopify: ShopifyContext, start_date: str, end_date: s
     return {
         "start_date": start_date,
         "end_date": end_date,
-        "pulled_at": datetime.utcnow().isoformat() + "Z",
+        "pulled_at": datetime.now(timezone.utc).isoformat(),
         "channels": buckets,
+        "caveat": UNITS_CAVEAT,
+    }
+
+
+def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str, end_date: str) -> dict:
+    """Combines a live QBO pull and a live Shopify pull for the same period into one
+    dashboard-ready structure: company-wide totals, per-channel margin + health metrics
+    (AOV/discount rate/refund rate/ROAS) + revenue concentration.
+
+    Computed live rather than from the cached Daily Packet on purpose — that packet only
+    exists as a local file wherever nonnas-daily-operator last ran, which isn't reachable from
+    wherever this backend is actually deployed (see nonnas-finance-audit/CLAUDE.md open items).
+    A dashboard showing "no data" on first load would be a worse experience than one that's
+    always live but costs a bit more per page view - acceptable at this usage scale (3 people,
+    occasional checks, not constant polling).
+    """
+    financials = get_channel_financials_live(qbo, start_date, end_date)
+    units = get_channel_units_live(shopify, start_date, end_date)
+
+    channel_margins = financials["channels"]
+    concentration = channel_financials.compute_revenue_concentration(channel_margins)
+
+    channels = {}
+    for ch in CHANNELS:
+        margin = channel_margins[ch]
+        shopify_totals = units["channels"][ch]
+        health = channel_financials.compute_channel_health_metrics(margin, shopify_totals)
+        channels[ch] = {
+            **margin,
+            **health,
+            "revenue_share": concentration[ch],
+            "orders": shopify_totals["orders"],
+            "units": shopify_totals["units"],
+        }
+
+    company_net_sales = sum(m["net_sales"] for m in channel_margins.values())
+    company_contribution = sum(m["contribution"] for m in channel_margins.values())
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "company": {
+            "net_sales": company_net_sales,
+            "contribution": company_contribution,
+            "contribution_pct": (company_contribution / company_net_sales) if company_net_sales else None,
+        },
+        "channels": channels,
         "caveat": UNITS_CAVEAT,
     }

@@ -70,3 +70,57 @@ def test_ask_returns_502_on_failure(monkeypatch):
     response = client.post("/ask", json={"question": "anything"}, headers=AUTH_HEADER)
     assert response.status_code == 502
     assert "QBO is down" in response.json()["detail"]
+
+
+def test_dashboard_rejects_missing_auth():
+    response = client.get("/dashboard")
+    assert response.status_code == 401
+
+
+def test_dashboard_defaults_to_month_to_date(monkeypatch):
+    captured = {}
+
+    def _fake_get_dashboard_data(qbo, shopify, start_date, end_date):
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        return {"company": {"net_sales": 1.0}, "channels": {}}
+
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+    monkeypatch.setattr(server, "get_dashboard_data", _fake_get_dashboard_data)
+
+    response = client.get("/dashboard", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    assert captured["start_date"].endswith("-01")  # first of the month
+
+
+def test_dashboard_accepts_explicit_date_range(monkeypatch):
+    captured = {}
+
+    def _fake_get_dashboard_data(qbo, shopify, start_date, end_date):
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        return {"company": {}, "channels": {}}
+
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+    monkeypatch.setattr(server, "get_dashboard_data", _fake_get_dashboard_data)
+
+    response = client.get(
+        "/dashboard?start_date=2026-07-01&end_date=2026-07-31", headers=AUTH_HEADER
+    )
+    assert response.status_code == 200
+    assert captured == {"start_date": "2026-07-01", "end_date": "2026-07-31"}
+
+
+def test_dashboard_returns_502_on_failure(monkeypatch):
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+
+    def _boom(qbo, shopify, start_date, end_date):
+        raise RuntimeError("Shopify is down")
+
+    monkeypatch.setattr(server, "get_dashboard_data", _boom)
+    response = client.get("/dashboard", headers=AUTH_HEADER)
+    assert response.status_code == 502
+    assert "Shopify is down" in response.json()["detail"]
