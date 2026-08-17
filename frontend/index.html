@@ -171,6 +171,61 @@
     margin-top: 20px; font-size: 12px; color: var(--muted); background: var(--warn-bg);
     padding: 10px 14px; border-radius: 8px; line-height: 1.5;
   }
+  #contribution-note {
+    margin-top: 14px; font-size: 12px; color: var(--warn-text); background: var(--warn-bg);
+    padding: 8px 12px; border-radius: 8px; line-height: 1.5;
+  }
+
+  /* ---- Info tooltips: hover on desktop, tap on mobile ---- */
+  .info-icon {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    font-style: normal;
+    line-height: 13px;
+    text-align: center;
+    cursor: help;
+    margin-left: 4px;
+    position: relative;
+  }
+  .info-icon .tooltip-text {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 130%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--panel);
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    width: 200px;
+    z-index: 50;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+  }
+  .info-icon .tooltip-text::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border: 5px solid transparent;
+    border-top-color: var(--text);
+  }
+  .info-icon:hover .tooltip-text,
+  .info-icon.tapped .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+  }
 
   /* ---- Chat toggle button ---- */
   #chat-toggle-btn {
@@ -488,6 +543,28 @@
     });
   }
 
+  const TOOLTIPS = {
+    contribution: "Revenue minus product cost, fulfillment, ad spend, and marketing tools. Does NOT include overhead (payroll, rent, insurance, admin, etc.) — see the note below.",
+    ads: "Paid advertising only: Meta, Google, TikTok Ads, Amazon Ads, and (for DTC) Marketplace Advertising.",
+    otherMarketing: "Marketing costs that aren't paid ads — currently just email & SMS marketing tools.",
+    roas: "Return on ad spend: net sales ÷ ad spend. Higher means each ad dollar is generating more revenue.",
+    discountRate: "Total discounts given, as a percent of gross sales before discounts.",
+    refundRate: "Total refunds, as a percent of gross sales before refunds.",
+    ordersUnits: "Source: Shopify order data.",
+  };
+  function infoIcon(key) {
+    return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
+  }
+  // Tooltips open on hover on desktop (CSS-only); this makes tap work on mobile, where
+  // hover doesn't exist - tapping one icon opens it and closes any other open one.
+  document.addEventListener("click", (e) => {
+    const icon = e.target.closest(".info-icon");
+    document.querySelectorAll(".info-icon.tapped").forEach((el) => {
+      if (el !== icon) el.classList.remove("tapped");
+    });
+    if (icon) icon.classList.toggle("tapped");
+  });
+
   function renderDashboard(data) {
     document.getElementById("freshness-bar").textContent =
       `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.generated_at)}`;
@@ -498,18 +575,19 @@
       <h2>Company Overview</h2>
       <div id="company-stats">
         <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div></div>
-        <div class="stat"><div class="stat-value ${contribClass}">${fmtCurrency(c.contribution)}</div><div class="stat-label">Contribution</div></div>
-        <div class="stat"><div class="stat-value ${contribClass}">${fmtPercent(c.contribution_pct)}</div><div class="stat-label">Contribution Margin</div></div>
+        <div class="stat"><div class="stat-value ${contribClass}">${fmtCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div></div>
+        <div class="stat"><div class="stat-value ${contribClass}">${fmtPercent(c.contribution_pct)}</div><div class="stat-label">Contribution Margin (before overhead)</div></div>
       </div>
+      <div id="contribution-note">Contribution does not include overhead — payroll, rent, insurance, admin, and other company-wide costs. The company can show positive contribution here while still losing money overall.</div>
       <div class="metric-row">
-        <div><span class="metric-label">Orders</span><span>${fmtNumber(c.orders)}</span></div>
+        <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(c.orders)}</span></div>
         <div><span class="metric-label">AOV</span><span>${fmtCurrency(c.aov)}</span></div>
-        <div><span class="metric-label">Units</span><span>${fmtNumber(c.units)}</span></div>
-        <div><span class="metric-label">Discount Rate</span><span>${fmtPercent(c.discount_rate)}</span></div>
-        <div><span class="metric-label">Refund Rate</span><span>${fmtPercent(c.refund_rate)}</span></div>
-        <div><span class="metric-label">ROAS</span><span>${c.roas !== null && c.roas !== undefined ? c.roas.toFixed(1) + "x" : "—"}</span></div>
-        <div><span class="metric-label">Ad Spend</span><span>${fmtCurrency(c.ads)}</span></div>
-        <div><span class="metric-label">Other Marketing</span><span>${fmtCurrency(c.other_marketing)}</span></div>
+        <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(c.units)}</span></div>
+        <div><span class="metric-label">Discount Rate${infoIcon("discountRate")}</span><span>${fmtPercent(c.discount_rate)}</span></div>
+        <div><span class="metric-label">Refund Rate${infoIcon("refundRate")}</span><span>${fmtPercent(c.refund_rate)}</span></div>
+        <div><span class="metric-label">ROAS${infoIcon("roas")}</span><span>${c.roas !== null && c.roas !== undefined ? c.roas.toFixed(1) + "x" : "—"}</span></div>
+        <div><span class="metric-label">Ad Spend${infoIcon("ads")}</span><span>${fmtCurrency(c.ads)}</span></div>
+        <div><span class="metric-label">Other Marketing${infoIcon("otherMarketing")}</span><span>${fmtCurrency(c.other_marketing)}</span></div>
       </div>
     `;
 
@@ -528,17 +606,17 @@
         <h3>${ch} ${badge}</h3>
         <div class="revenue-share">${fmtPercent(m.revenue_share)} of total revenue</div>
         <div class="primary-stat ${contribClass}">${fmtCurrency(m.contribution)}</div>
-        <div class="primary-stat-label">Contribution (${fmtPercent(m.contribution_pct)} margin)</div>
+        <div class="primary-stat-label">Contribution before overhead (${fmtPercent(m.contribution_pct)} margin)${infoIcon("contribution")}</div>
         <div class="metric-row">
           <div><span class="metric-label">Net Sales</span><span>${fmtCurrency(m.net_sales)}</span></div>
-          <div><span class="metric-label">Orders</span><span>${fmtNumber(m.orders)}</span></div>
+          <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.orders)}</span></div>
           <div><span class="metric-label">AOV</span><span>${fmtCurrency(m.aov)}</span></div>
-          <div><span class="metric-label">Units</span><span>${fmtNumber(m.units)}</span></div>
-          <div><span class="metric-label">Discount Rate</span><span>${fmtPercent(m.discount_rate)}</span></div>
-          <div><span class="metric-label">Refund Rate</span><span>${fmtPercent(m.refund_rate)}</span></div>
-          <div><span class="metric-label">ROAS</span><span>${m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—"}</span></div>
-          <div><span class="metric-label">Ad Spend</span><span>${fmtCurrency(m.ads)}</span></div>
-          <div><span class="metric-label">Other Marketing</span><span>${fmtCurrency(m.other_marketing)}</span></div>
+          <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.units)}</span></div>
+          <div><span class="metric-label">Discount Rate${infoIcon("discountRate")}</span><span>${fmtPercent(m.discount_rate)}</span></div>
+          <div><span class="metric-label">Refund Rate${infoIcon("refundRate")}</span><span>${fmtPercent(m.refund_rate)}</span></div>
+          <div><span class="metric-label">ROAS${infoIcon("roas")}</span><span>${m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—"}</span></div>
+          <div><span class="metric-label">Ad Spend${infoIcon("ads")}</span><span>${fmtCurrency(m.ads)}</span></div>
+          <div><span class="metric-label">Other Marketing${infoIcon("otherMarketing")}</span><span>${fmtCurrency(m.other_marketing)}</span></div>
         </div>
       `;
       grid.appendChild(card);
