@@ -4,5 +4,5 @@ fastapi>=0.115
 uvicorn>=0.30
 
 # Shared QBO/Shopify connectors, also used by nonnas-finance-audit and nonnas-daily-operator.
-# Installed with: pip install -e ../nonnas-shared
--e ../nonnas-shared
+# Public repo, so no auth needed to install this on a build server like Render's.
+git+https://github.com/jbarbalaco22-boop/nonnas-shared.git
