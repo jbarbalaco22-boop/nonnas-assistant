@@ -2,6 +2,18 @@
 CORS is still wide open for now since there's no frontend origin to lock it down to yet — that
 still needs tightening once a frontend exists. Auth is now in place (see auth.py).
 """
+import sys
+
+# Some minimal Linux container images (seen on Render's default Python environment) don't set
+# a UTF-8 locale, which made model output containing an em-dash crash with a UnicodeEncodeError
+# somewhere downstream of ask() - not reproducible on Windows even with PYTHONIOENCODING=ascii
+# forced, so this is a defensive fix rather than one pinned to a confirmed single root cause.
+# PYTHONUTF8=1 as a Render env var covers this too; this covers it even if that's forgotten on
+# some future deployment target.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
