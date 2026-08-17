@@ -99,6 +99,36 @@
   #dashboard-status { color: var(--muted); font-size: 14px; }
   #dashboard-status.error { color: var(--error); }
   #freshness-bar { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+
+  #range-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  #range-preset {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--panel);
+    color: var(--text);
+    font-family: inherit;
+  }
+  #custom-range-inputs { display: none; align-items: center; gap: 8px; }
+  #custom-range-inputs input[type="date"] {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  #custom-range-inputs span { font-size: 13px; color: var(--muted); }
+  #apply-custom-range {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #apply-custom-range:hover { background: var(--accent-dark); }
   .card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -108,6 +138,7 @@
   #company-card { margin-bottom: 20px; }
   #company-card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 12px; }
   #company-stats { display: flex; gap: 32px; flex-wrap: wrap; }
+  #company-card .metric-row { margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .stat .stat-value { font-size: 26px; font-weight: 700; }
   .stat .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .positive { color: var(--success); }
@@ -265,6 +296,21 @@
     <div id="dashboard-view">
       <div id="dashboard-status">Loading dashboard...</div>
       <div id="dashboard-content" style="display:none">
+        <div id="range-controls">
+          <select id="range-preset">
+            <option value="mtd">Month to Date</option>
+            <option value="last-month">Last Month</option>
+            <option value="last-30">Last 30 Days</option>
+            <option value="ytd">Year to Date</option>
+            <option value="custom">Custom Range</option>
+          </select>
+          <div id="custom-range-inputs">
+            <input type="date" id="custom-start">
+            <span>to</span>
+            <input type="date" id="custom-end">
+            <button id="apply-custom-range">Apply</button>
+          </div>
+        </div>
         <div id="freshness-bar"></div>
         <div id="company-card" class="card"></div>
         <div id="channel-grid"></div>
@@ -340,7 +386,59 @@
       localStorage.removeItem(TOKEN_KEY);
       window.location.reload();
     });
+    initRangeControls();
     loadDashboard();
+  }
+
+  // ---- Date range presets ----
+  // Uses the browser's local date, not UTC (see fmtDate's comment above for why - going
+  // through toISOString() here would risk the same off-by-one-day shift near midnight for
+  // users west of UTC).
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function localISO(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+
+  function computeRange(preset) {
+    const today = new Date();
+    const y = today.getFullYear(), m = today.getMonth();
+    if (preset === "mtd") return { start: localISO(new Date(y, m, 1)), end: localISO(today) };
+    if (preset === "last-month") {
+      return { start: localISO(new Date(y, m - 1, 1)), end: localISO(new Date(y, m, 0)) };
+    }
+    if (preset === "last-30") {
+      return { start: localISO(new Date(today.getTime() - 29 * 86400000)), end: localISO(today) };
+    }
+    if (preset === "ytd") return { start: localISO(new Date(y, 0, 1)), end: localISO(today) };
+    return null; // "custom" is handled by the Apply button, not here
+  }
+
+  let currentRange = computeRange("mtd");
+
+  function initRangeControls() {
+    const rangePreset = document.getElementById("range-preset");
+    const customRangeInputs = document.getElementById("custom-range-inputs");
+    const customStart = document.getElementById("custom-start");
+    const customEnd = document.getElementById("custom-end");
+    const today = localISO(new Date());
+    customStart.max = today;
+    customEnd.max = today;
+
+    rangePreset.addEventListener("change", () => {
+      if (rangePreset.value === "custom") {
+        customRangeInputs.style.display = "flex";
+        customStart.value = currentRange.start;
+        customEnd.value = currentRange.end;
+      } else {
+        customRangeInputs.style.display = "none";
+        currentRange = computeRange(rangePreset.value);
+        loadDashboard();
+      }
+    });
+
+    document.getElementById("apply-custom-range").addEventListener("click", () => {
+      if (!customStart.value || !customEnd.value) return;
+      currentRange = { start: customStart.value, end: customEnd.value };
+      loadDashboard();
+    });
   }
 
   // ---- Chat panel show/hide ----
@@ -403,6 +501,15 @@
         <div class="stat"><div class="stat-value ${contribClass}">${fmtCurrency(c.contribution)}</div><div class="stat-label">Contribution</div></div>
         <div class="stat"><div class="stat-value ${contribClass}">${fmtPercent(c.contribution_pct)}</div><div class="stat-label">Contribution Margin</div></div>
       </div>
+      <div class="metric-row">
+        <div><span class="metric-label">Orders</span><span>${fmtNumber(c.orders)}</span></div>
+        <div><span class="metric-label">AOV</span><span>${fmtCurrency(c.aov)}</span></div>
+        <div><span class="metric-label">Units</span><span>${fmtNumber(c.units)}</span></div>
+        <div><span class="metric-label">Discount Rate</span><span>${fmtPercent(c.discount_rate)}</span></div>
+        <div><span class="metric-label">Refund Rate</span><span>${fmtPercent(c.refund_rate)}</span></div>
+        <div><span class="metric-label">ROAS</span><span>${c.roas !== null && c.roas !== undefined ? c.roas.toFixed(1) + "x" : "—"}</span></div>
+        <div><span class="metric-label">Ad Spend</span><span>${fmtCurrency(c.ads)}</span></div>
+      </div>
     `;
 
     const grid = document.getElementById("channel-grid");
@@ -446,7 +553,8 @@
 
     const token = localStorage.getItem(TOKEN_KEY);
     try {
-      const res = await fetch(`${API_BASE}/dashboard`, {
+      const params = new URLSearchParams({ start_date: currentRange.start, end_date: currentRange.end });
+      const res = await fetch(`${API_BASE}/dashboard?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();

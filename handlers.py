@@ -164,18 +164,13 @@ def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str
             "units": shopify_totals["units"],
         }
 
-    company_net_sales = sum(m["net_sales"] for m in channel_margins.values())
-    company_contribution = sum(m["contribution"] for m in channel_margins.values())
+    company = channel_financials.compute_company_totals(channel_margins, units["channels"])
 
     return {
         "start_date": start_date,
         "end_date": end_date,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "company": {
-            "net_sales": company_net_sales,
-            "contribution": company_contribution,
-            "contribution_pct": (company_contribution / company_net_sales) if company_net_sales else None,
-        },
+        "company": company,
         "channels": channels,
         "caveat": UNITS_CAVEAT,
     }
