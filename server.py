@@ -15,6 +15,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import logging
+import traceback
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,9 +59,15 @@ def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskR
     try:
         answer = ask(question)
     except Exception as e:
-        # logger.exception (not just str(e) in the HTTP response) so the full traceback lands
-        # in server logs - a caught exception here previously left no trace of *where* it came
-        # from, which cost real debugging time on the first live failure.
-        logger.exception("ask() failed for question: %r", question)
-        raise HTTPException(status_code=502, detail=f"Failed to answer: {e}") from e
+        try:
+            logger.exception("ask() failed for question: %r", question)
+        except Exception:
+            pass  # logging itself failed (plausibly the same encoding issue) - don't let that mask the real error
+        # TEMPORARY debug aid: server-side logging of this specific error has been silently
+        # failing (Python's logging module swallows errors that happen while emitting a
+        # record), so put the traceback directly in the response instead, ASCII-safe-encoded so
+        # it can't fail to transmit the same way. Remove once the root cause is found and fixed
+        # - a stack trace in an API response is not something to ship long-term.
+        safe_tb = traceback.format_exc().encode("ascii", errors="backslashreplace").decode("ascii")
+        raise HTTPException(status_code=502, detail=f"Failed to answer: {e}\n\n{safe_tb}") from e
     return AskResponse(answer=answer)
