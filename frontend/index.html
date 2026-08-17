@@ -509,6 +509,7 @@
         <div><span class="metric-label">Refund Rate</span><span>${fmtPercent(c.refund_rate)}</span></div>
         <div><span class="metric-label">ROAS</span><span>${c.roas !== null && c.roas !== undefined ? c.roas.toFixed(1) + "x" : "—"}</span></div>
         <div><span class="metric-label">Ad Spend</span><span>${fmtCurrency(c.ads)}</span></div>
+        <div><span class="metric-label">Other Marketing</span><span>${fmtCurrency(c.other_marketing)}</span></div>
       </div>
     `;
 
@@ -537,6 +538,7 @@
           <div><span class="metric-label">Refund Rate</span><span>${fmtPercent(m.refund_rate)}</span></div>
           <div><span class="metric-label">ROAS</span><span>${m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—"}</span></div>
           <div><span class="metric-label">Ad Spend</span><span>${fmtCurrency(m.ads)}</span></div>
+          <div><span class="metric-label">Other Marketing</span><span>${fmtCurrency(m.other_marketing)}</span></div>
         </div>
       `;
       grid.appendChild(card);
