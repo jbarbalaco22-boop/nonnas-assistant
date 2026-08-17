@@ -1,13 +1,13 @@
 """Thin HTTP wrapper around assistant.ask() — this is what a web frontend actually talks to.
-No auth yet (separate, deliberate next step, not an oversight) and CORS is wide open for now
-since there's no frontend origin to lock it down to yet — both need tightening before this is
-reachable from outside your own machine.
+CORS is still wide open for now since there's no frontend origin to lock it down to yet — that
+still needs tightening once a frontend exists. Auth is now in place (see auth.py).
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from assistant import ask
+from auth import verify_token
 
 app = FastAPI(title="nonnas-assistant")
 
@@ -33,7 +33,7 @@ def health() -> dict:
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask_endpoint(request: AskRequest) -> AskResponse:
+def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskResponse:
     """Synchronous (not async def) on purpose — ask() is a blocking call (QBO/Shopify/Claude
     API round-trips), and FastAPI automatically runs plain `def` routes in a thread pool instead
     of blocking the event loop the way an `async def` route calling this would."""
