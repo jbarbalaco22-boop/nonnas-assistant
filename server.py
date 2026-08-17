@@ -14,6 +14,8 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,6 +23,7 @@ from pydantic import BaseModel
 from assistant import ask
 from auth import verify_token
 
+logger = logging.getLogger("nonnas_assistant")
 app = FastAPI(title="nonnas-assistant")
 
 app.add_middleware(
@@ -55,5 +58,9 @@ def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskR
     try:
         answer = ask(question)
     except Exception as e:
+        # logger.exception (not just str(e) in the HTTP response) so the full traceback lands
+        # in server logs - a caught exception here previously left no trace of *where* it came
+        # from, which cost real debugging time on the first live failure.
+        logger.exception("ask() failed for question: %r", question)
         raise HTTPException(status_code=502, detail=f"Failed to answer: {e}") from e
     return AskResponse(answer=answer)
