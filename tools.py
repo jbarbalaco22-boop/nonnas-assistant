@@ -55,6 +55,19 @@ TOOL_SCHEMAS = [
             "required": ["start_date", "end_date"],
         },
     },
+    {
+        "name": "get_unit_reference",
+        "description": (
+            "The canonical, hand-reconciled units-sold-by-channel reference, covering every "
+            "month back to September 2024. Use this instead of get_channel_units_live for any "
+            "month before 2025-04 (no live per-channel data exists that far back — Shopify "
+            "wasn't split by channel yet, only a total-units figure), or as a more trustworthy "
+            "cross-check when live Amazon/Wholesale unit counts look wrong. This is a fixed "
+            "historical snapshot, not live — it won't reflect anything more recent than whenever "
+            "it was last updated. Takes no arguments; returns every month it has."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -69,4 +82,6 @@ def dispatch(tool_name: str, tool_input: dict, qbo_context, shopify_context) -> 
         return handlers.get_channel_units_live(
             shopify_context, tool_input["start_date"], tool_input["end_date"]
         )
+    if tool_name == "get_unit_reference":
+        return handlers.get_unit_reference()
     raise ValueError(f"Unknown tool: {tool_name}")

@@ -8,7 +8,7 @@ import anthropic
 from dotenv import load_dotenv
 
 from handlers import QboContext, ShopifyContext
-from nonnas_shared.config import require_env
+from nonnas_shared.config import load_business_context, require_env
 from nonnas_shared.connectors import shopify_client as shared_shopify
 from nonnas_shared.connectors.qbo_auth import refresh_access_token
 from tools import TOOL_SCHEMAS, dispatch
@@ -18,7 +18,7 @@ load_dotenv()
 QBO_ENVIRONMENT = os.environ.get("QBO_ENVIRONMENT", "sandbox")
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
-SYSTEM_PROMPT = """You are a financial Q&A assistant for Nonna's Italian Goods (Nonna's Olive \
+SYSTEM_PROMPT = f"""You are a financial Q&A assistant for Nonna's Italian Goods (Nonna's Olive \
 Oil), used by the CFO and the two founders to ask questions about the business — revenue, ad \
 spend, COGS, gross margin, units sold, and trends, across the DTC (Shopify), TikTok Shop, \
 Amazon, and Wholesale channels.
@@ -34,24 +34,7 @@ get_channel_units_live) when the question needs current-moment accuracy, spans a
 range, or is about a trend across multiple periods — call the live financials tool once per \
 period and compare.
 
-Known data-quality context — apply this reasoning, don't just report raw numbers:
-- TikTok and Amazon revenue post to QuickBooks via A2X as settlement-period summary entries, \
-not raw order data. A gap between QuickBooks and Shopify for these channels may be settlement \
-timing, not an error.
-- Amazon's presence in Shopify is a known-incomplete, sometimes-duplicated mirror of real \
-Amazon sales — there's no direct Amazon connection yet. Don't state Amazon unit/order counts \
-from Shopify as complete.
-- Wholesale revenue is often recorded as a bank Deposit with no Item or Quantity attached, so \
-Wholesale COGS and units are frequently $0/zero even when real sales happened — that's a known \
-gap, not evidence nothing sold.
-- Historical COGS was corrected against a physical inventory count through July 2026. August \
-2026 onward reflects the raw, uncorrected automated deduction — treat August's channel margins \
-as less reliable than prior months' until a similar correction has been done.
-- Ad spend accounts (Meta/Google/TikTok/Amazon Ads) aren't tagged by Class in QuickBooks — \
-channel attribution for ads comes from mapping each platform to its channel, not from a \
-QuickBooks Class field. Marketplace Advertising, Paid Collaborations, and Affiliate \
-Commissions aren't confidently attributable to one channel and are excluded from per-channel \
-figures rather than guessed at.
+{load_business_context()}
 
 Be direct and quantitative. When you're not confident a number means what it looks like it \
 means (e.g. a channel with $0 revenue that might just be a data gap), say so rather than \

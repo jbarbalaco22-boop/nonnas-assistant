@@ -7,6 +7,7 @@ import json
 import os
 from datetime import date, datetime, timezone
 
+from nonnas_shared.config import load_channel_units_by_month
 from nonnas_shared.connectors import channel_financials
 from nonnas_shared.connectors import qbo_client as shared_qbo
 from nonnas_shared.connectors import shopify_client as shared_shopify
@@ -54,6 +55,23 @@ def get_daily_snapshot() -> dict:
     with open(matches[-1], encoding="utf-8") as f:
         packet = json.load(f)
     return packet
+
+
+def get_unit_reference() -> dict:
+    """The canonical, hand-reconciled units-sold-by-channel reference (channel_units_by_month.csv
+    in nonnas-shared), covering every month back to Sept 2024. Use this instead of
+    get_channel_units_live for:
+    - Any month before 2025-04, where there's no live per-channel data at all (Shopify wasn't
+      split by channel yet - only a total-units figure exists, DTC/TikTok/Amazon/Wholesale are
+      all null for those months).
+    - A sanity check against live Amazon/Wholesale unit counts, which are known-unreliable (see
+      the units caveat) - this reference was built by hand-reconciling against Amazon's and
+      Faire's own transaction reports, not just Shopify's incomplete mirror of them.
+
+    This is a fixed historical reference, not live - it doesn't extend past whatever month it
+    was last updated through, and won't reflect anything more recent than that.
+    """
+    return {"months": load_channel_units_by_month()}
 
 
 def get_channel_financials_live(qbo: QboContext, start_date: str, end_date: str, channel: str | None = None) -> dict:

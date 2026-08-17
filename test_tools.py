@@ -43,3 +43,11 @@ def test_channel_enum_matches_the_four_real_channels():
     assert set(financials_schema["input_schema"]["properties"]["channel"]["enum"]) == {
         "DTC", "TikTok", "Amazon", "Wholesale"
     }
+
+
+def test_get_unit_reference_dispatches_and_returns_real_data():
+    """No mocking - this reads the actual packaged CSV via nonnas_shared, same as production."""
+    result = dispatch("get_unit_reference", {}, qbo_context=None, shopify_context=None)
+    assert "months" in result
+    assert "2026-07" in result["months"]
+    assert result["months"]["2026-07"]["DTC"] == 234
