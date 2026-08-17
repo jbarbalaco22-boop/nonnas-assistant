@@ -24,7 +24,7 @@ from assistant import ask
 from auth import verify_token
 
 logger = logging.getLogger("nonnas_assistant")
-app = FastAPI(title="nonnas-assistant")
+app = FastAPI(title="Harvest")
 
 app.add_middleware(
     CORSMiddleware,
