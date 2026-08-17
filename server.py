@@ -15,7 +15,6 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 import logging
-import traceback
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,23 +47,6 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/debug/env-check")
-def debug_env_check(user: str = Depends(verify_token)) -> dict:
-    """TEMPORARY - diagnosing why the ANTHROPIC_API_KEY header build fails only on Render, not
-    locally, despite the same literal key value. Reports length and a safe repr, not the raw
-    value, and only to an authenticated user. Remove once resolved."""
-    import os
-
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    non_ascii_positions = [i for i, c in enumerate(key) if ord(c) > 127]
-    return {
-        "length": len(key),
-        "repr": repr(key),
-        "non_ascii_char_count": len(non_ascii_positions),
-        "non_ascii_positions": non_ascii_positions[:20],
-    }
-
-
 @app.post("/ask", response_model=AskResponse)
 def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskResponse:
     """Synchronous (not async def) on purpose — ask() is a blocking call (QBO/Shopify/Claude
@@ -76,15 +58,6 @@ def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskR
     try:
         answer = ask(question)
     except Exception as e:
-        try:
-            logger.exception("ask() failed for question: %r", question)
-        except Exception:
-            pass  # logging itself failed (plausibly the same encoding issue) - don't let that mask the real error
-        # TEMPORARY debug aid: server-side logging of this specific error has been silently
-        # failing (Python's logging module swallows errors that happen while emitting a
-        # record), so put the traceback directly in the response instead, ASCII-safe-encoded so
-        # it can't fail to transmit the same way. Remove once the root cause is found and fixed
-        # - a stack trace in an API response is not something to ship long-term.
-        safe_tb = traceback.format_exc().encode("ascii", errors="backslashreplace").decode("ascii")
-        raise HTTPException(status_code=502, detail=f"Failed to answer: {e}\n\n{safe_tb}") from e
+        logger.exception("ask() failed for question: %r", question)
+        raise HTTPException(status_code=502, detail=f"Failed to answer: {e}") from e
     return AskResponse(answer=answer)
