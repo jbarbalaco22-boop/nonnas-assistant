@@ -48,6 +48,23 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/debug/env-check")
+def debug_env_check(user: str = Depends(verify_token)) -> dict:
+    """TEMPORARY - diagnosing why the ANTHROPIC_API_KEY header build fails only on Render, not
+    locally, despite the same literal key value. Reports length and a safe repr, not the raw
+    value, and only to an authenticated user. Remove once resolved."""
+    import os
+
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    non_ascii_positions = [i for i, c in enumerate(key) if ord(c) > 127]
+    return {
+        "length": len(key),
+        "repr": repr(key),
+        "non_ascii_char_count": len(non_ascii_positions),
+        "non_ascii_positions": non_ascii_positions[:20],
+    }
+
+
 @app.post("/ask", response_model=AskResponse)
 def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskResponse:
     """Synchronous (not async def) on purpose — ask() is a blocking call (QBO/Shopify/Claude
