@@ -293,7 +293,7 @@
   }
   #trends-status { color: var(--muted); font-size: 14px; }
   #trends-status.error { color: var(--error); }
-  #trends-grid {
+  #trends-grid-overview, #trends-grid-channels, #cash-trend-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 16px;
@@ -359,6 +359,54 @@
   #sku-units-period-results tr.sku-product-row td, #sku-units-to-date-results tr.sku-product-row td { font-weight: 700; background: var(--bg); }
   #sku-units-period-results tr.sku-variant-row td:first-child, #sku-units-to-date-results tr.sku-variant-row td:first-child { padding-left: 22px; font-weight: 500; }
   #sku-units-period-results tr.sku-variant-row td:last-child, #sku-units-to-date-results tr.sku-variant-row td:last-child { font-weight: 500; }
+
+  /* ---- Cash & Runway ---- */
+  #cash-status { color: var(--muted); font-size: 14px; }
+  #cash-status.error { color: var(--error); }
+  #cash-card h2 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--slate); margin: 0 0 12px; }
+  #cash-stats { display: flex; gap: 32px; flex-wrap: wrap; }
+  #cash-basis-note {
+    margin-top: 14px; font-size: 12px; color: var(--slate); background: var(--warn-bg);
+    padding: 8px 12px; border-radius: 8px; line-height: 1.5;
+  }
+  #cash-trend-section { margin-top: 20px; }
+  #cash-trend-section h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted);
+    margin: 0 0 12px;
+  }
+  #cash-obligations-card { margin-top: 20px; }
+  #cash-obligations-card h2 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--slate); margin: 0 0 12px; }
+  #cash-payroll-row { font-size: 13px; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; }
+  #cash-payroll-row div { display: flex; justify-content: space-between; }
+  #cash-payroll-row .metric-label { color: var(--slate); font-weight: 400; }
+  #cash-payroll-row span:last-child { font-weight: 700; color: var(--text); }
+  #cash-obligations-list table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #cash-obligations-list th {
+    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
+    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  #cash-obligations-list th:first-child { text-align: left; }
+  #cash-obligations-list td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #cash-obligations-list td:first-child { text-align: left; font-weight: 600; }
+  #cash-obligations-list tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+  .obligation-remove-btn {
+    border: none; background: none; color: var(--error); font-size: 12px; font-weight: 600;
+    cursor: pointer; padding: 2px 4px;
+  }
+  .obligation-remove-btn:hover { text-decoration: underline; }
+  #cash-obligation-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  #cash-obligation-form input {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; font-family: inherit; color: var(--text); background: var(--panel);
+  }
+  #obligation-name { flex: 1 1 200px; }
+  #obligation-amount { width: 110px; }
+  #cash-obligation-form button {
+    padding: 7px 16px; border: none; border-radius: 8px; background: var(--accent);
+    color: white; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #cash-obligation-form button:hover { background: var(--accent-dark); }
+
   .chart-tooltip {
     display: none;
     position: fixed;
@@ -674,9 +722,32 @@
         </div>
 
         <div id="tab-cash" class="tab-panel" style="display:none">
-          <div id="cash-placeholder" class="card">
-            <h2>Cash &amp; Runway</h2>
-            <p class="sku-revenue-note">Under construction — combined cash balance, cash-basis burn rate and runway, known obligations, and a 90-day forecast are coming here next.</p>
+          <div id="cash-status">Loading cash snapshot...</div>
+          <div id="cash-content" style="display:none">
+            <div id="cash-card" class="card"></div>
+
+            <div id="cash-trend-section">
+              <h2>Trends</h2>
+              <div id="cash-trend-grid">
+                <div class="card chart-card">
+                  <h3>Combined Cash Balance</h3>
+                  <div id="chart-cash-balance"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="cash-obligations-card" class="card">
+              <h2>Known Obligations</h2>
+              <div id="cash-payroll-row"></div>
+              <div id="cash-obligations-list"></div>
+              <form id="cash-obligation-form">
+                <input type="text" id="obligation-name" placeholder="Description" required />
+                <input type="number" id="obligation-amount" placeholder="Amount" step="0.01" min="0" required />
+                <input type="date" id="obligation-date" />
+                <button type="submit">Add</button>
+              </form>
+              <p class="sku-revenue-note">Manual entries only — stored in this browser, not shared across devices or synced with QuickBooks.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -757,6 +828,8 @@
     initRangeControls();
     loadDashboard();
     loadTrends(); // independent of the date-range dashboard above - always the trailing 6 months
+    loadCashSnapshot(); // also independent of the date range - always "as of today"
+    renderObligationsList();
   }
 
   // ---- Date range presets ----
@@ -798,6 +871,9 @@
     // avoids tracking "is this already up to date" separately from loadTrends' own fetch.
     if (name === "channels" && lastTrendsPeriods) {
       renderTrendsChannels(lastTrendsPeriods);
+    }
+    if (name === "cash" && lastCashSnapshot) {
+      renderCashBalanceChart(lastCashSnapshot.balance_trend);
     }
   }
 
@@ -947,6 +1023,9 @@
     limitedData: "Amazon orders rarely flow through Shopify at all (no direct Amazon connection yet). Wholesale revenue is typically recorded as a bank deposit with no item/quantity, so it often shows zero units even when real sales happened. Treat DTC and TikTok as reliable; Amazon and Wholesale as directional at best.",
     skuRevenue: "On-demand only — pulls fresh every time you click, nothing is cached. Uses the date range selected above. Currently covers DTC only (recovered from transaction memo text, since QuickBooks has no structured per-SKU field yet) — other channels' real SKU activity won't show up here, not because there wasn't any. Revenue here settles a few days behind actual sales, so units sold on the Shopify side for recent days will often be ahead of what's shown here — that's a timing gap, not missing sales. Older transactions (before SKU tagging was turned on in the connector) are attributed to Nonna's Olive Oil (500mL Original), the only SKU that was selling then — this stops happening automatically once a second SKU goes active. Net here won't match DTC's Net Sales above by design — shipping revenue isn't tied to a specific SKU, so it's left out here (everything else — product revenue, discounts, refunds — is the same underlying QuickBooks accounts as DTC's Net Sales figure).",
     skuUnits: "\"Since Inception\" is every unit ever sold, combining a hand-reconciled historical reference (Shopify's own order history doesn't reach back more than ~60 days) with a live pull for whatever's more recent. \"For Selected Period\" uses the date range chosen above, combining the same two sources whenever the range reaches past that ~60-day window — any stretch covered by neither source shows up as a note below the table rather than being silently dropped. Pack-size SKUs (e.g. a 3-pack) show real bottle-equivalent units, with the raw order count underneath.",
+    cashBurn: "Based on the actual change in combined bank balance over the trailing 90 days, not accrual Net Income — see the note below for why those two numbers differ.",
+    cashRunway: "Combined cash balance ÷ monthly burn rate. Not shown when cash is growing (no burn to divide by).",
+    cashNetIncome90d: "Accrual Net Income for the same 90-day window, shown for comparison only — it's not used to compute burn or runway. It usually differs from the real cash change because inventory purchases hit cash when paid, not when later recognized as cost of goods sold.",
   };
   function infoIcon(key) {
     return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
@@ -1622,6 +1701,166 @@
       trendsStatusChannels.className = "error";
     }
   }
+
+  // ---- Cash & Runway (independent of the date range above - always "as of today"; see
+  // server.py's /cash-snapshot docstring for why burn/runway are cash-basis, not accrual). ----
+  let lastCashSnapshot = null;  // so switchTab can lazily render the balance chart the first
+  // time the Cash tab is visited, same reasoning as lastTrendsPeriods for the Channels tab.
+
+  function renderCashBalanceChart(trend) {
+    const points = trend.map((t) => ({ label: fmtMonthLabel(t.month + "-01"), value: t.balance }));
+    renderLineChart("chart-cash-balance", points, { color: "var(--accent)", format: fmtCurrency, inProgressIndex: points.length - 1 });
+  }
+
+  function renderCashSnapshot(data) {
+    const burning = data.monthly_burn > 0;
+    const burnLabel = burning ? "Monthly Burn Rate" : "Monthly Cash Growth";
+    const burnValue = fmtCurrency(Math.abs(data.monthly_burn));
+    const burnClass = burning ? "negative" : "positive";
+
+    let runwayText = "N/A";
+    let runwayClass = "";
+    if (data.runway_months !== null && data.runway_months !== undefined) {
+      runwayText = `${data.runway_months.toFixed(1)} months`;
+      runwayClass = data.runway_months < 6 ? "negative" : "";
+    } else if (!burning) {
+      runwayText = "N/A — cash growing";
+      runwayClass = "positive";
+    }
+
+    document.getElementById("cash-card").innerHTML = `
+      <h2>Combined Cash &amp; Runway</h2>
+      <div id="cash-stats">
+        <div class="stat">
+          <div class="stat-value">${fmtCurrency(data.cash_balance)}</div>
+          <div class="stat-label">Combined Cash Balance</div>
+          <div class="run-rate-note">as of ${fmtDate(data.as_of)}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value ${burnClass}">${burnValue}</div>
+          <div class="stat-label">${burnLabel}${infoIcon("cashBurn")}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value ${runwayClass}">${runwayText}</div>
+          <div class="stat-label">Runway${infoIcon("cashRunway")}</div>
+        </div>
+      </div>
+      <div id="cash-basis-note">
+        Based on the actual change in combined bank balance over the trailing 90 days
+        (${fmtDate(data.lookback_start)} – ${fmtDate(data.as_of)}), not accrual Net Income —
+        Net Income for that same window was ${fmtSignedCurrency(data.net_income_90d)}, which differs
+        because inventory purchases hit cash when paid, not when later recognized as cost of
+        goods sold.${infoIcon("cashNetIncome90d")}
+      </div>
+    `;
+
+    const payrollRow = document.getElementById("cash-payroll-row");
+    if (data.known_payroll) {
+      const p = data.known_payroll;
+      payrollRow.innerHTML = `
+        <div>
+          <span class="metric-label">Next estimated payroll (Founder/Officer Compensation, every ${p.cadence_days} days)</span>
+          <span>${fmtCurrency(p.amount)} around ${fmtDate(p.next_estimated_date)}</span>
+        </div>
+      `;
+    } else {
+      payrollRow.innerHTML = `<p class="sku-revenue-note">Not enough recent payroll history to estimate the next payment.</p>`;
+    }
+  }
+
+  async function loadCashSnapshot() {
+    const status = document.getElementById("cash-status");
+    const content = document.getElementById("cash-content");
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const res = await fetch(`${API_BASE}/cash-snapshot`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.detail || "Couldn't load the cash snapshot.";
+        status.className = "error";
+        return;
+      }
+      lastCashSnapshot = data;
+      renderCashSnapshot(data);
+      status.style.display = "none";
+      content.style.display = "block";
+      if (currentTab === "cash") renderCashBalanceChart(data.balance_trend);
+      // else: rendered lazily by switchTab the first time the Cash tab is visited, since a
+      // chart drawn while its tab is hidden would measure 0 width.
+    } catch (e) {
+      status.textContent = "Couldn't reach the server — check your connection and try again.";
+      status.className = "error";
+    }
+  }
+
+  // ---- Cash & Runway: manual "known obligations" list (client-side only - no backend
+  // persistence exists for this yet, per get_cash_snapshot's docstring: the only obligation
+  // with a reliable automated signal today is payroll, above). ----
+  const OBLIGATIONS_KEY = "cashObligations";
+  function loadObligations() {
+    try {
+      return JSON.parse(localStorage.getItem(OBLIGATIONS_KEY)) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function saveObligations(list) {
+    localStorage.setItem(OBLIGATIONS_KEY, JSON.stringify(list));
+  }
+  function renderObligationsList() {
+    const list = loadObligations();
+    const container = document.getElementById("cash-obligations-list");
+    if (list.length === 0) {
+      container.innerHTML = `<p class="sku-revenue-note">No manual entries yet — add anything not already covered above (a known bill, a planned purchase, etc.).</p>`;
+      return;
+    }
+    const sorted = [...list].sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+    const total = sorted.reduce((sum, o) => sum + o.amount, 0);
+    const rows = sorted.map((o) => `
+      <tr>
+        <td>${o.name}</td>
+        <td>${o.date ? fmtDate(o.date) : "—"}</td>
+        <td>${fmtCurrency(o.amount)}</td>
+        <td><button type="button" class="obligation-remove-btn" data-id="${o.id}">Remove</button></td>
+      </tr>
+    `).join("");
+    container.innerHTML = `
+      <table>
+        <thead><tr><th>Description</th><th>Date</th><th>Amount</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td>${fmtCurrency(total)}</td><td></td></tr></tfoot>
+      </table>
+    `;
+    container.querySelectorAll(".obligation-remove-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        saveObligations(loadObligations().filter((o) => o.id !== btn.dataset.id));
+        renderObligationsList();
+      });
+    });
+  }
+  document.getElementById("cash-obligation-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById("obligation-name");
+    const amountInput = document.getElementById("obligation-amount");
+    const dateInput = document.getElementById("obligation-date");
+    const amount = parseFloat(amountInput.value);
+    if (!nameInput.value.trim() || !Number.isFinite(amount)) return;
+    const list = loadObligations();
+    list.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: nameInput.value.trim(),
+      amount,
+      date: dateInput.value || null,
+    });
+    saveObligations(list);
+    renderObligationsList();
+    nameInput.value = "";
+    amountInput.value = "";
+    dateInput.value = "";
+    nameInput.focus();
+  });
 
   // ---- SKU Revenue (on-demand, no caching - see server.py's /sku-revenue docstring) ----
   function renderSkuRevenue(data) {
