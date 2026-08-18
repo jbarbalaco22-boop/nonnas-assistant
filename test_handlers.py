@@ -130,7 +130,8 @@ def test_period_comparison_sums_net_sales_and_contribution_only(monkeypatch):
                 "TikTok": {"net_sales": 500.0, "contribution": -50.0, "cogs": 50.0},
                 "Amazon": {"net_sales": 0.0, "contribution": 0.0, "cogs": 0.0},
                 "Wholesale": {"net_sales": 0.0, "contribution": 0.0, "cogs": 0.0},
-            }
+            },
+            "income_statement": {"net_income": 125.0},
         }
 
     monkeypatch.setattr(handlers, "get_channel_financials_live", fake_financials)
@@ -140,6 +141,7 @@ def test_period_comparison_sums_net_sales_and_contribution_only(monkeypatch):
     assert result["end_date"] == "2026-07-17"
     assert result["company"]["net_sales"] == 1500.0
     assert result["company"]["contribution"] == 250.0
+    assert result["company"]["net_income"] == 125.0
     assert result["channels"]["DTC"] == {"net_sales": 1000.0, "contribution": 300.0}
 
 
@@ -186,7 +188,10 @@ def test_prior_comparable_period_custom_range_uses_immediately_preceding_equal_l
 def test_period_comparison_ytd_range_uses_prior_year_not_prior_month(monkeypatch):
     def fake_financials(qbo, start, end):
         assert start == "2025-01-01" and end == "2025-08-18"
-        return {"channels": {ch: {"net_sales": 0.0, "contribution": 0.0, "cogs": 0.0} for ch in handlers.CHANNELS}}
+        return {
+            "channels": {ch: {"net_sales": 0.0, "contribution": 0.0, "cogs": 0.0} for ch in handlers.CHANNELS},
+            "income_statement": {"net_income": 0.0},
+        }
 
     monkeypatch.setattr(handlers, "get_channel_financials_live", fake_financials)
     result = handlers.get_period_comparison(None, "2026-01-01", "2026-08-18")

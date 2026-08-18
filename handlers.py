@@ -474,14 +474,15 @@ def _prior_comparable_period(start: date, end: date) -> tuple[date, date]:
 
 
 def get_period_comparison(qbo: QboContext, start_date: str, end_date: str) -> dict:
-    """Returns net_sales/contribution, company-wide and per channel, for the prior comparable
-    period - powers the dashboard's period-over-period deltas. See _prior_comparable_period's
-    docstring for how the comparison period is chosen based on the requested range's shape.
+    """Returns net_sales/contribution/net_income, company-wide and per channel (net_income is
+    company-wide only - it isn't a per-channel concept), for the prior comparable period - powers
+    the dashboard's period-over-period deltas. See _prior_comparable_period's docstring for how
+    the comparison period is chosen based on the requested range's shape.
 
     Deliberately QBO-only: skips the Shopify order fetch and health-metric computation
-    get_dashboard_data does, since only net_sales/contribution are needed for a delta - doing
-    the full computation for a period whose orders/units/ROAS are never displayed would roughly
-    double this endpoint's external API calls for no reason.
+    get_dashboard_data does, since those aren't needed for a delta - doing the full computation
+    for a period whose orders/units/ROAS are never displayed would roughly double this
+    endpoint's external API calls for no reason.
     """
     prior_start, prior_end = _prior_comparable_period(
         date.fromisoformat(start_date), date.fromisoformat(end_date)
@@ -494,6 +495,7 @@ def get_period_comparison(qbo: QboContext, start_date: str, end_date: str) -> di
         "company": {
             "net_sales": sum(m["net_sales"] for m in channel_margins.values()),
             "contribution": sum(m["contribution"] for m in channel_margins.values()),
+            "net_income": financials["income_statement"]["net_income"],
         },
         "channels": {
             ch: {"net_sales": m["net_sales"], "contribution": m["contribution"]}

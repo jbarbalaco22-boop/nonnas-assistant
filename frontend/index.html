@@ -1034,13 +1034,15 @@
     const contribClass = c.contribution >= 0 ? "positive" : "negative";
     const netIncomeClass = c.net_income >= 0 ? "positive" : "negative";
     const netSalesDelta = renderNetSalesDelta(c.net_sales, pp);
-    const contribDelta = pp ? renderContributionDelta(c.contribution, pp.company.contribution, fmtShortRange(pp.start_date, pp.end_date)) : "";
+    const rangeLabel = pp ? fmtShortRange(pp.start_date, pp.end_date) : "";
+    const contribDelta = pp ? renderContributionDelta(c.contribution, pp.company.contribution, rangeLabel) : "";
+    const netIncomeDelta = pp ? renderContributionDelta(c.net_income, pp.company.net_income, rangeLabel) : "";
     document.getElementById("company-card").innerHTML = `
       <h2>Company Overview</h2>
       <div id="company-stats">
         <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}</div>
         <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}</div>
-        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(c.net_income)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div></div>
+        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(c.net_income)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}</div>
       </div>
       <div id="contribution-note">Contribution excludes overhead — Net Income above is the real bottom line.</div>
       <div class="metric-row">
