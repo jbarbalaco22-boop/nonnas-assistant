@@ -1354,6 +1354,29 @@
       : "";
   }
 
+  // Retries a fetch on failure (network error or 502/503/504) with a short delay - covers the
+  // Render backend's cold-start window, where the very first request(s) right after a page load
+  // (or after the instance has been idle) can fail even though every retry a moment later
+  // succeeds reliably. Confirmed live (2026-08-18): dashboard/trends/cash-snapshot failed
+  // consistently on first page load but succeeded every time when manually re-triggered a few
+  // seconds later - sequencing the three calls didn't fix it, since it's a cold-start effect on
+  // the first request(s), not concurrent-load contention.
+  async function fetchWithRetry(url, options, retries = 2, delayMs = 2000) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await fetch(url, options);
+        if (!res.ok && [502, 503, 504].includes(res.status) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+        return res;
+      } catch (e) {
+        if (attempt >= retries) throw e;
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+
   async function loadDashboard() {
     dashboardStatus.textContent = "Loading dashboard...";
     dashboardStatus.className = "";
@@ -1363,7 +1386,7 @@
     const token = localStorage.getItem(TOKEN_KEY);
     try {
       const params = new URLSearchParams({ start_date: currentRange.start, end_date: currentRange.end });
-      const res = await fetch(`${API_BASE}/dashboard?${params}`, {
+      const res = await fetchWithRetry(`${API_BASE}/dashboard?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -1697,7 +1720,7 @@
     const trendsGridChannels = document.getElementById("trends-grid-channels");
     const token = localStorage.getItem(TOKEN_KEY);
     try {
-      const res = await fetch(`${API_BASE}/trends?months=6`, {
+      const res = await fetchWithRetry(`${API_BASE}/trends?months=6`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -1825,7 +1848,7 @@
     const content = document.getElementById("cash-content");
     const token = localStorage.getItem(TOKEN_KEY);
     try {
-      const res = await fetch(`${API_BASE}/cash-snapshot`, {
+      const res = await fetchWithRetry(`${API_BASE}/cash-snapshot`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
