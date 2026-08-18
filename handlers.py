@@ -95,6 +95,7 @@ def get_channel_financials_live(qbo: QboContext, start_date: str, end_date: str,
         "end_date": end_date,
         "pulled_at": datetime.now(timezone.utc).isoformat(),
         "channels": results,
+        "income_statement": channel_financials.compute_net_income(pl_data),
     }
 
 
@@ -165,6 +166,12 @@ def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str
         }
 
     company = channel_financials.compute_company_totals(channel_margins, units["channels"])
+    net_income = financials["income_statement"]["net_income"]
+    # overhead is derived from (contribution - net_income) rather than independently summed,
+    # so it's always internally consistent with whatever the channel cards show - it silently
+    # picks up unallocated ad spend and any G&A account not yet in qbo_account_map.json too.
+    company["net_income"] = net_income
+    company["overhead"] = company["contribution"] - net_income
 
     return {
         "start_date": start_date,

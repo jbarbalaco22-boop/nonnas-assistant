@@ -21,7 +21,13 @@ TOOL_SCHEMAS = [
             "specific date range, computed fresh from QuickBooks right now (not cached). Use "
             "this for trend analysis (call it multiple times across different periods and "
             "compare) or when the user explicitly wants current-moment data rather than the "
-            "daily snapshot. This is real-time-as-of-right-now, not an average of the past."
+            "daily snapshot. This is real-time-as-of-right-now, not an average of the past. "
+            "The response also includes 'income_statement' — company-wide income, cogs, "
+            "expenses, other_income, and net_income, computed structurally from the full P&L "
+            "(not just what's attributed to a channel). Use net_income, not the sum of channel "
+            "'contribution' figures, whenever asked if the company is actually profitable or "
+            "making money — contribution excludes overhead (payroll, rent, insurance, admin, "
+            "unallocated ad spend), so it can be positive while net_income is deeply negative."
         ),
         "input_schema": {
             "type": "object",

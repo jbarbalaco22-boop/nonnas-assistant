@@ -545,6 +545,8 @@
 
   const TOOLTIPS = {
     contribution: "Revenue minus product cost, fulfillment, ad spend, and marketing tools. Does NOT include overhead (payroll, rent, insurance, admin, etc.) — see the note below.",
+    netIncome: "The company's true bottom line: revenue minus every cost, including overhead. This is what \"are we actually making money\" means.",
+    overhead: "Company-wide costs not tied to any one channel — payroll, rent, insurance, legal, admin, and similar. Contribution minus Overhead equals Net Income.",
     ads: "Paid advertising only: Meta, Google, TikTok Ads, Amazon Ads, and (for DTC) Marketplace Advertising.",
     otherMarketing: "Marketing costs that aren't paid ads — currently just email & SMS marketing tools.",
     roas: "Return on ad spend: net sales ÷ ad spend. Higher means each ad dollar is generating more revenue.",
@@ -571,15 +573,18 @@
 
     const c = data.company;
     const contribClass = c.contribution >= 0 ? "positive" : "negative";
+    const netIncomeClass = c.net_income >= 0 ? "positive" : "negative";
     document.getElementById("company-card").innerHTML = `
       <h2>Company Overview</h2>
       <div id="company-stats">
         <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div></div>
         <div class="stat"><div class="stat-value ${contribClass}">${fmtCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div></div>
-        <div class="stat"><div class="stat-value ${contribClass}">${fmtPercent(c.contribution_pct)}</div><div class="stat-label">Contribution Margin (before overhead)</div></div>
+        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtCurrency(c.net_income)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div></div>
       </div>
-      <div id="contribution-note">Contribution does not include overhead — payroll, rent, insurance, admin, and other company-wide costs. The company can show positive contribution here while still losing money overall.</div>
+      <div id="contribution-note">Contribution does not include overhead — payroll, rent, insurance, admin, and other company-wide costs. Net Income above is the real bottom line, after everything.</div>
       <div class="metric-row">
+        <div><span class="metric-label">Contribution Margin</span><span>${fmtPercent(c.contribution_pct)}</span></div>
+        <div><span class="metric-label">Overhead${infoIcon("overhead")}</span><span>${fmtCurrency(c.overhead)}</span></div>
         <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(c.orders)}</span></div>
         <div><span class="metric-label">AOV</span><span>${fmtCurrency(c.aov)}</span></div>
         <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(c.units)}</span></div>

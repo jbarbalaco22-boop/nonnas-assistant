@@ -21,7 +21,9 @@ def _financials_result():
                        "contribution": 0.0, "contribution_pct": None},
             "Wholesale": {"net_sales": 0.0, "cogs": 0.0, "three_pl": 0.0, "ads": 0.0, "fees": 0.0,
                           "contribution": 0.0, "contribution_pct": None},
-        }
+        },
+        "income_statement": {"income": 1500.0, "cogs": 450.0, "expenses": 500.0,
+                              "other_income": 0.0, "net_income": 550.0},
     }
 
 
@@ -45,6 +47,8 @@ def test_dashboard_combines_financials_and_units(monkeypatch):
 
     assert result["company"]["net_sales"] == 1500.0
     assert result["company"]["contribution"] == 910.0
+    assert result["company"]["net_income"] == 550.0
+    assert result["company"]["overhead"] == 360.0  # contribution 910 - net_income 550
     assert result["channels"]["DTC"]["aov"] == 50.0  # 1000 / 20
     assert result["channels"]["DTC"]["revenue_share"] == 1000.0 / 1500.0
     assert result["channels"]["Amazon"]["aov"] is None  # no orders
@@ -54,7 +58,9 @@ def test_dashboard_combines_financials_and_units(monkeypatch):
 def test_dashboard_no_revenue_gives_none_company_pct(monkeypatch):
     empty_financials = {"channels": {ch: {"net_sales": 0.0, "cogs": 0.0, "three_pl": 0.0, "ads": 0.0,
                                            "fees": 0.0, "contribution": 0.0, "contribution_pct": None}
-                                      for ch in handlers.CHANNELS}}
+                                      for ch in handlers.CHANNELS},
+                         "income_statement": {"income": 0.0, "cogs": 0.0, "expenses": 0.0,
+                                               "other_income": 0.0, "net_income": 0.0}}
     empty_units = {"channels": {ch: {"orders": 0, "units": 0, "gross": 0.0, "discounts": 0.0,
                                       "refunds": 0.0, "net_revenue": 0.0} for ch in handlers.CHANNELS}}
     monkeypatch.setattr(handlers, "get_channel_financials_live", lambda qbo, s, e: empty_financials)
