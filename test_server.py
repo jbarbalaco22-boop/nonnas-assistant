@@ -51,7 +51,7 @@ def test_whoami_rejects_missing_auth():
 
 
 def test_ask_returns_answer_with_valid_token(monkeypatch):
-    monkeypatch.setattr(server, "ask", lambda question: f"answer to: {question}")
+    monkeypatch.setattr(server, "ask", lambda question, history=None: f"answer to: {question}")
     response = client.post("/ask", json={"question": "how's DTC doing?"}, headers=AUTH_HEADER)
     assert response.status_code == 200
     assert response.json() == {"answer": "answer to: how's DTC doing?"}
@@ -62,8 +62,39 @@ def test_ask_rejects_empty_question():
     assert response.status_code == 400
 
 
+def test_ask_passes_history_through(monkeypatch):
+    captured = {}
+
+    def fake_ask(question, history=None):
+        captured["history"] = history
+        return "ok"
+
+    monkeypatch.setattr(server, "ask", fake_ask)
+    response = client.post(
+        "/ask",
+        json={
+            "question": "and last month?",
+            "history": [
+                {"role": "user", "content": "how's DTC doing?"},
+                {"role": "assistant", "content": "DTC net sales are $12,000 this month."},
+            ],
+        },
+        headers=AUTH_HEADER,
+    )
+    assert response.status_code == 200
+    assert captured["history"] == [
+        {"role": "user", "content": "how's DTC doing?"},
+        {"role": "assistant", "content": "DTC net sales are $12,000 this month."},
+    ]
+
+
+def test_ask_defaults_to_empty_history():
+    response = client.post("/ask", json={"question": "anything"}, headers=AUTH_HEADER)
+    assert response.status_code in (200, 502)  # just confirming no validation error on omitted history
+
+
 def test_ask_returns_502_on_failure(monkeypatch):
-    def _boom(question):
+    def _boom(question, history=None):
         raise RuntimeError("QBO is down")
 
     monkeypatch.setattr(server, "ask", _boom)

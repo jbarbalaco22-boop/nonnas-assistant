@@ -199,6 +199,14 @@ def get_sku_revenue_live(qbo: QboContext, start_date: str, end_date: str) -> dic
     retrievable by direct ID lookup didn't appear in ANY query for at least 20+ minutes after
     creation) - a $0/empty result for a period that should have activity may just mean "not
     indexed yet," not "nothing happened."
+
+    Settlement-window caveat: this and get_sku_units_live are on two different clocks. Units
+    come straight from Shopify (real-time, as orders are placed). Revenue here comes from A2X's
+    settlement batches, which only post to QBO after a payout period closes - typically a few
+    days behind. So for any range that includes recent days, units sold in Shopify will
+    routinely be higher than what's shown here as settled revenue - that's a timing gap, not a
+    data error, and it doesn't self-correct until the corresponding settlement posts. Don't
+    diff these two tools' outputs for the same range and read the gap as missing/lost sales.
     """
     entries = shared_qbo.fetch_journal_entries(
         qbo.realm_id, qbo.access_token,

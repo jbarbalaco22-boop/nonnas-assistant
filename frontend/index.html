@@ -192,7 +192,10 @@
   #company-card { margin-bottom: 20px; }
   #company-card h2 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--slate); margin: 0 0 12px; }
   #company-stats { display: flex; gap: 32px; flex-wrap: wrap; }
-  #company-card .metric-row { margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  #company-card .metric-row { margin-top: 16px; grid-template-columns: repeat(5, 1fr); }
+  @media (max-width: 640px) {
+    #company-card .metric-row { grid-template-columns: repeat(2, 1fr); }
+  }
   .stat .stat-value { font-size: 26px; font-weight: 700; }
   .stat .stat-label { font-size: 12.5px; color: var(--slate); margin-top: 2px; }
   .delta { font-size: 12px; font-weight: 600; margin-top: 5px; }
@@ -240,7 +243,8 @@
     padding-top: 10px;
   }
   .metric-row div { display: flex; justify-content: space-between; }
-  .metric-row .metric-label { color: var(--slate); }
+  .metric-row .metric-label { color: var(--slate); font-weight: 400; }
+  .metric-row div > span:last-child { font-weight: 700; color: var(--text); }
   #dashboard-caveat {
     margin-top: 20px; font-size: 12px; color: var(--slate); background: var(--warn-bg);
     padding: 10px 14px; border-radius: 8px; line-height: 1.5;
@@ -551,7 +555,9 @@
             On-demand only — pulls fresh every time you click, nothing is cached. Uses the date
             range selected above. Currently covers DTC only (recovered from transaction memo
             text, since QuickBooks has no structured per-SKU field yet) — other channels' real
-            SKU activity won't show up here, not because there wasn't any.
+            SKU activity won't show up here, not because there wasn't any. Revenue here settles
+            a few days behind actual sales, so units sold on the Shopify side for recent days
+            will often be ahead of what's shown here — that's a timing gap, not missing sales.
           </p>
           <div id="sku-revenue-status"></div>
           <div id="sku-revenue-results"></div>
@@ -1391,6 +1397,9 @@
   document.getElementById("sku-revenue-refresh-btn").addEventListener("click", loadSkuRevenue);
 
   // ---- Chat ----
+  let chatHistory = [];  // {role, content} turns, sent with each /ask call so follow-ups
+  // ("yes", "what about last month") resolve against what was actually asked before.
+
   function addMessage(text, className) {
     const el = document.createElement("div");
     el.className = `msg ${className}`;
@@ -1417,7 +1426,7 @@
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history: chatHistory }),
       });
       const data = await res.json();
       pending.remove();
@@ -1425,6 +1434,8 @@
         addMessage(data.detail || "Something went wrong.", "error");
       } else {
         addMessage(data.answer, "assistant");
+        chatHistory.push({ role: "user", content: question });
+        chatHistory.push({ role: "assistant", content: data.answer });
       }
     } catch (e) {
       pending.remove();

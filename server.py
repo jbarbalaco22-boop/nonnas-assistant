@@ -43,8 +43,14 @@ app.add_middleware(
 )
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
 class AskRequest(BaseModel):
     question: str
+    history: list[ChatMessage] = []
 
 
 class AskResponse(BaseModel):
@@ -131,8 +137,9 @@ def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskR
     question = request.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="question must not be empty")
+    history = [{"role": m.role, "content": m.content} for m in request.history]
     try:
-        answer = ask(question)
+        answer = ask(question, history=history)
     except Exception as e:
         logger.exception("ask() failed for question: %r", question)
         raise HTTPException(status_code=502, detail=f"Failed to answer: {e}") from e

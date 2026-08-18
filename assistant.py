@@ -104,13 +104,29 @@ if CACHED_TOOLS:
     CACHED_TOOLS[-1] = {**CACHED_TOOLS[-1], "cache_control": _CACHE_CONTROL}
 
 
-def ask(question: str, client: anthropic.Anthropic | None = None) -> str:
-    """Runs one question through the tool-use loop to completion, returns the final answer text."""
+MAX_HISTORY_MESSAGES = 20  # ~10 prior exchanges — enough for follow-ups like "yes" or "what
+# about last month" to resolve, without letting an old chat's context grow unbounded.
+
+
+def ask(
+    question: str,
+    client: anthropic.Anthropic | None = None,
+    history: list[dict] | None = None,
+) -> str:
+    """Runs one question through the tool-use loop to completion, returns the final answer text.
+
+    `history` is prior turns as plain {"role": "user"|"assistant", "content": str} dicts (no
+    tool_use/tool_result blocks - those are internal to a single question's loop and dropped
+    once that question is answered). This is what lets a follow-up like "yes" or "what about
+    Amazon" resolve against what was actually asked before, instead of every question starting
+    from a blank slate.
+    """
     client = client or anthropic.Anthropic()
     qbo_context = _get_qbo_context()
     shopify_context = _get_shopify_context()
 
-    messages = [{"role": "user", "content": question}]
+    prior = (history or [])[-MAX_HISTORY_MESSAGES:]
+    messages = [*prior, {"role": "user", "content": question}]
 
     for _ in range(MAX_TOOL_ITERATIONS):
         response = client.messages.create(

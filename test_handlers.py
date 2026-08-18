@@ -198,6 +198,7 @@ def test_sku_units_live_buckets_by_sku_then_channel(monkeypatch):
 
 def test_sku_revenue_live_uses_shared_qbo_client_and_parser(monkeypatch):
     real_je = {
+        "DocNumber": "A2XSH-10Aug-12Aug-281",
         "Line": [
             {
                 "Description": "ProductSalesNotTaxed  - OO-OO-ORG-500 - Online store",
