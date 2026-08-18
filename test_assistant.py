@@ -92,3 +92,51 @@ def test_system_prompt_and_tools_have_cache_breakpoints():
     assert assistant.CACHED_TOOLS[-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     # only the last tool needs the breakpoint - caching applies to everything up to that point
     assert "cache_control" not in assistant.CACHED_TOOLS[0]
+
+
+class _RecordingClient:
+    """Captures the `messages` list passed to the (single) create() call, so a test can inspect
+    exactly what the model saw."""
+
+    def __init__(self):
+        self.call_count = 0
+        self.last_messages = None
+        self.messages = SimpleNamespace(create=self._create)
+
+    def _create(self, **kwargs):
+        self.call_count += 1
+        # Copy, not a reference - ask() mutates the same list object (appends the assistant's
+        # reply) right after this call returns, which would otherwise silently shift the
+        # snapshot a caller inspects afterward.
+        self.last_messages = list(kwargs["messages"])
+        return _FakeResponse("end_turn", [_FakeTextBlock()])
+
+
+def test_selected_range_prepended_as_context_note(monkeypatch):
+    """Regression for a real audit finding (2026-08-18): with Year-to-Date selected on screen,
+    a question like "what's driving this period" got answered about July vs. August MTD instead
+    - no connection to what was actually selected. selected_range should ground "this period"-
+    style phrasing against the dashboard's current filter."""
+    monkeypatch.setattr(assistant, "_get_qbo_context", lambda: None)
+    monkeypatch.setattr(assistant, "_get_shopify_context", lambda: None)
+
+    fake_client = _RecordingClient()
+    assistant.ask(
+        "what's driving the change this period?", client=fake_client,
+        selected_range=("2026-01-01", "2026-08-18"),
+    )
+
+    sent_content = fake_client.last_messages[-1]["content"]
+    assert "2026-01-01" in sent_content
+    assert "2026-08-18" in sent_content
+    assert "what's driving the change this period?" in sent_content
+
+
+def test_no_selected_range_leaves_question_unmodified(monkeypatch):
+    monkeypatch.setattr(assistant, "_get_qbo_context", lambda: None)
+    monkeypatch.setattr(assistant, "_get_shopify_context", lambda: None)
+
+    fake_client = _RecordingClient()
+    assistant.ask("simple question", client=fake_client)
+
+    assert fake_client.last_messages[-1]["content"] == "simple question"

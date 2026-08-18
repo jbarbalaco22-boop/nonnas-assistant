@@ -51,7 +51,10 @@ def test_whoami_rejects_missing_auth():
 
 
 def test_ask_returns_answer_with_valid_token(monkeypatch):
-    monkeypatch.setattr(server, "ask", lambda question, history=None: f"answer to: {question}")
+    monkeypatch.setattr(
+        server, "ask",
+        lambda question, history=None, selected_range=None: f"answer to: {question}",
+    )
     response = client.post("/ask", json={"question": "how's DTC doing?"}, headers=AUTH_HEADER)
     assert response.status_code == 200
     assert response.json() == {"answer": "answer to: how's DTC doing?"}
@@ -65,7 +68,7 @@ def test_ask_rejects_empty_question():
 def test_ask_passes_history_through(monkeypatch):
     captured = {}
 
-    def fake_ask(question, history=None):
+    def fake_ask(question, history=None, selected_range=None):
         captured["history"] = history
         return "ok"
 
@@ -88,13 +91,47 @@ def test_ask_passes_history_through(monkeypatch):
     ]
 
 
+def test_ask_passes_selected_range_through(monkeypatch):
+    captured = {}
+
+    def fake_ask(question, history=None, selected_range=None):
+        captured["selected_range"] = selected_range
+        return "ok"
+
+    monkeypatch.setattr(server, "ask", fake_ask)
+    response = client.post(
+        "/ask",
+        json={
+            "question": "what's driving this period?",
+            "selected_range_start": "2026-01-01",
+            "selected_range_end": "2026-08-18",
+        },
+        headers=AUTH_HEADER,
+    )
+    assert response.status_code == 200
+    assert captured["selected_range"] == ("2026-01-01", "2026-08-18")
+
+
+def test_ask_selected_range_none_when_omitted(monkeypatch):
+    captured = {}
+
+    def fake_ask(question, history=None, selected_range=None):
+        captured["selected_range"] = selected_range
+        return "ok"
+
+    monkeypatch.setattr(server, "ask", fake_ask)
+    response = client.post("/ask", json={"question": "anything"}, headers=AUTH_HEADER)
+    assert response.status_code == 200
+    assert captured["selected_range"] is None
+
+
 def test_ask_defaults_to_empty_history():
     response = client.post("/ask", json={"question": "anything"}, headers=AUTH_HEADER)
     assert response.status_code in (200, 502)  # just confirming no validation error on omitted history
 
 
 def test_ask_returns_502_on_failure(monkeypatch):
-    def _boom(question, history=None):
+    def _boom(question, history=None, selected_range=None):
         raise RuntimeError("QBO is down")
 
     monkeypatch.setattr(server, "ask", _boom)

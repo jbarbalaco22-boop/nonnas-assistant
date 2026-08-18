@@ -58,6 +58,8 @@ class ChatMessage(BaseModel):
 class AskRequest(BaseModel):
     question: str
     history: list[ChatMessage] = []
+    selected_range_start: str | None = None
+    selected_range_end: str | None = None
 
 
 class AskResponse(BaseModel):
@@ -192,8 +194,13 @@ def ask_endpoint(request: AskRequest, user: str = Depends(verify_token)) -> AskR
     if not question:
         raise HTTPException(status_code=400, detail="question must not be empty")
     history = [{"role": m.role, "content": m.content} for m in request.history]
+    selected_range = (
+        (request.selected_range_start, request.selected_range_end)
+        if request.selected_range_start and request.selected_range_end
+        else None
+    )
     try:
-        answer = ask(question, history=history)
+        answer = ask(question, history=history, selected_range=selected_range)
     except Exception as e:
         logger.exception("ask() failed for question: %r", question)
         raise HTTPException(status_code=502, detail=f"Failed to answer: {e}") from e

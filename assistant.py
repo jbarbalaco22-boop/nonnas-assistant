@@ -112,6 +112,7 @@ def ask(
     question: str,
     client: anthropic.Anthropic | None = None,
     history: list[dict] | None = None,
+    selected_range: tuple[str, str] | None = None,
 ) -> str:
     """Runs one question through the tool-use loop to completion, returns the final answer text.
 
@@ -120,13 +121,33 @@ def ask(
     once that question is answered). This is what lets a follow-up like "yes" or "what about
     Amazon" resolve against what was actually asked before, instead of every question starting
     from a blank slate.
+
+    selected_range, if given, is the (start_date, end_date) the frontend's date-range picker is
+    currently showing - passed through so a relative phrase like "this period" or "this month"
+    resolves against whatever the user is actually looking at on screen, instead of the model
+    guessing (previously it would fall back to e.g. "July vs. August MTD" with no connection to
+    the selected range - real audit finding, 2026-08-18: asked with Year-to-Date selected, got
+    an answer about July vs. August MTD instead). Prepended to the per-turn user message rather
+    than folded into the cached system prompt, since this varies every request and the system
+    prompt is prompt-cached for cost/latency - it's still just a hint, not a hard override: the
+    model can and should use a different range if the question itself specifies one.
     """
     client = client or anthropic.Anthropic()
     qbo_context = _get_qbo_context()
     shopify_context = _get_shopify_context()
 
     prior = (history or [])[-MAX_HISTORY_MESSAGES:]
-    messages = [*prior, {"role": "user", "content": question}]
+    if selected_range:
+        range_note = (
+            f"[For context: the dashboard the user is looking at is currently filtered to "
+            f"{selected_range[0]} through {selected_range[1]}. If their question refers to "
+            f"\"this period,\" \"this month,\" or similar without specifying a range, assume "
+            f"they mean this one - unless the question itself clearly asks about a different "
+            f"period, in which case use that instead.]\n\n{question}"
+        )
+    else:
+        range_note = question
+    messages = [*prior, {"role": "user", "content": range_note}]
 
     for _ in range(MAX_TOOL_ITERATIONS):
         response = client.messages.create(
