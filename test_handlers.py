@@ -3,6 +3,7 @@ get_channel_units_live mocked, so this doesn't hit real QBO/Shopify APIs. The co
 (company totals, per-channel health metrics, revenue concentration) was also verified directly
 against real July 2026 data, separately from these unit tests."""
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -75,8 +76,9 @@ def test_monthly_trend_calls_dashboard_once_per_month_oldest_first(monkeypatch):
 
     calls = []
 
-    def fake_dashboard(qbo, shopify, start, end):
+    def fake_dashboard(qbo, shopify, start, end, include_prior_period=True):
         calls.append((start, end))
+        assert include_prior_period is False  # get_monthly_trend must skip the extra QBO pull
         return {"start_date": start, "end_date": end}
 
     monkeypatch.setattr(handlers, "get_dashboard_data", fake_dashboard)
@@ -95,7 +97,8 @@ def test_monthly_trend_crosses_year_boundary_correctly(monkeypatch):
     calls = []
     monkeypatch.setattr(
         handlers, "get_dashboard_data",
-        lambda qbo, shopify, start, end: calls.append((start, end)) or {"start_date": start, "end_date": end},
+        lambda qbo, shopify, start, end, include_prior_period=True: calls.append((start, end))
+        or {"start_date": start, "end_date": end},
     )
 
     handlers.get_monthly_trend(None, None, months=3, today=date(2026, 1, 15))
@@ -103,3 +106,55 @@ def test_monthly_trend_crosses_year_boundary_correctly(monkeypatch):
     assert calls[0] == ("2025-11-01", "2025-11-30")
     assert calls[1] == ("2025-12-01", "2025-12-31")
     assert calls[2] == ("2026-01-01", "2026-01-15")
+
+
+def test_shift_back_one_month_normal_case():
+    assert handlers._shift_back_one_month(date(2026, 8, 17)) == date(2026, 7, 17)
+
+
+def test_shift_back_one_month_january_wraps_to_prior_year():
+    assert handlers._shift_back_one_month(date(2026, 1, 15)) == date(2025, 12, 15)
+
+
+def test_shift_back_one_month_clamps_to_shorter_month():
+    # Mar 31 -> Feb has no 31st in 2026 (not a leap year) -> clamp to Feb 28
+    assert handlers._shift_back_one_month(date(2026, 3, 31)) == date(2026, 2, 28)
+
+
+def test_period_comparison_sums_net_sales_and_contribution_only(monkeypatch):
+    def fake_financials(qbo, start, end):
+        assert start == "2026-07-01" and end == "2026-07-17"  # shifted back one month
+        return {
+            "channels": {
+                "DTC": {"net_sales": 1000.0, "contribution": 300.0, "cogs": 100.0},
+                "TikTok": {"net_sales": 500.0, "contribution": -50.0, "cogs": 50.0},
+                "Amazon": {"net_sales": 0.0, "contribution": 0.0, "cogs": 0.0},
+                "Wholesale": {"net_sales": 0.0, "contribution": 0.0, "cogs": 0.0},
+            }
+        }
+
+    monkeypatch.setattr(handlers, "get_channel_financials_live", fake_financials)
+    result = handlers.get_period_comparison(None, "2026-08-01", "2026-08-17")
+
+    assert result["start_date"] == "2026-07-01"
+    assert result["end_date"] == "2026-07-17"
+    assert result["company"]["net_sales"] == 1500.0
+    assert result["company"]["contribution"] == 250.0
+    assert result["channels"]["DTC"] == {"net_sales": 1000.0, "contribution": 300.0}
+
+
+def test_dashboard_includes_prior_period_by_default(monkeypatch):
+    monkeypatch.setattr(handlers, "get_channel_financials_live", lambda qbo, s, e: _financials_result())
+    monkeypatch.setattr(handlers, "get_channel_units_live", lambda shopify, s, e: _units_result())
+
+    result = handlers.get_dashboard_data(None, None, "2026-08-01", "2026-08-17")
+    assert "prior_period" in result
+    assert result["prior_period"]["start_date"] == "2026-07-01"
+
+
+def test_dashboard_skips_prior_period_when_disabled(monkeypatch):
+    monkeypatch.setattr(handlers, "get_channel_financials_live", lambda qbo, s, e: _financials_result())
+    monkeypatch.setattr(handlers, "get_channel_units_live", lambda shopify, s, e: _units_result())
+
+    result = handlers.get_dashboard_data(None, None, "2026-08-01", "2026-08-17", include_prior_period=False)
+    assert "prior_period" not in result

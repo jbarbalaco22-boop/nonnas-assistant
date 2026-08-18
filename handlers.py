@@ -135,7 +135,50 @@ def get_channel_units_live(shopify: ShopifyContext, start_date: str, end_date: s
     }
 
 
-def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str, end_date: str) -> dict:
+def _shift_back_one_month(d: date) -> date:
+    """Same day-of-month, one calendar month earlier - clamped to the prior month's last day
+    when it's shorter (e.g. Mar 31 -> Feb 28/29). Used to build the "same range last month"
+    comparison period (Aug 1-17 -> Jul 1-17), not a trailing N-days-back window."""
+    if d.month == 1:
+        y, m = d.year - 1, 12
+    else:
+        y, m = d.year, d.month - 1
+    last_day = calendar.monthrange(y, m)[1]
+    return date(y, m, min(d.day, last_day))
+
+
+def get_period_comparison(qbo: QboContext, start_date: str, end_date: str) -> dict:
+    """Returns net_sales/contribution, company-wide and per channel, for the prior comparable
+    period (same start/end day-of-month, one calendar month earlier) - powers the dashboard's
+    period-over-period deltas.
+
+    Deliberately QBO-only: skips the Shopify order fetch and health-metric computation
+    get_dashboard_data does, since only net_sales/contribution are needed for a delta - doing
+    the full computation for a period whose orders/units/ROAS are never displayed would roughly
+    double this endpoint's external API calls for no reason.
+    """
+    prior_start = _shift_back_one_month(date.fromisoformat(start_date))
+    prior_end = _shift_back_one_month(date.fromisoformat(end_date))
+    financials = get_channel_financials_live(qbo, prior_start.isoformat(), prior_end.isoformat())
+    channel_margins = financials["channels"]
+    return {
+        "start_date": prior_start.isoformat(),
+        "end_date": prior_end.isoformat(),
+        "company": {
+            "net_sales": sum(m["net_sales"] for m in channel_margins.values()),
+            "contribution": sum(m["contribution"] for m in channel_margins.values()),
+        },
+        "channels": {
+            ch: {"net_sales": m["net_sales"], "contribution": m["contribution"]}
+            for ch, m in channel_margins.items()
+        },
+    }
+
+
+def get_dashboard_data(
+    qbo: QboContext, shopify: ShopifyContext, start_date: str, end_date: str,
+    include_prior_period: bool = True,
+) -> dict:
     """Combines a live QBO pull and a live Shopify pull for the same period into one
     dashboard-ready structure: company-wide totals, per-channel margin + health metrics
     (AOV/discount rate/refund rate/ROAS) + revenue concentration.
@@ -146,6 +189,11 @@ def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str
     A dashboard showing "no data" on first load would be a worse experience than one that's
     always live but costs a bit more per page view - acceptable at this usage scale (3 people,
     occasional checks, not constant polling).
+
+    include_prior_period=False skips the extra QBO pull for period-over-period deltas -
+    get_monthly_trend sets this, since /trends already gets month-over-month comparison for
+    free from consecutive array entries, and doing it here too would roughly double the number
+    of QBO calls a 6-month trend load makes.
     """
     financials = get_channel_financials_live(qbo, start_date, end_date)
     units = get_channel_units_live(shopify, start_date, end_date)
@@ -174,7 +222,7 @@ def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str
     company["net_income"] = net_income
     company["overhead"] = company["contribution"] - net_income
 
-    return {
+    result = {
         "start_date": start_date,
         "end_date": end_date,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -182,6 +230,9 @@ def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str
         "channels": channels,
         "caveat": UNITS_CAVEAT,
     }
+    if include_prior_period:
+        result["prior_period"] = get_period_comparison(qbo, start_date, end_date)
+    return result
 
 
 def get_monthly_trend(
@@ -216,6 +267,9 @@ def get_monthly_trend(
             last_day = calendar.monthrange(period_start.year, period_start.month)[1]
             period_end = period_start.replace(day=last_day)
         results.append(
-            get_dashboard_data(qbo, shopify, period_start.isoformat(), period_end.isoformat())
+            get_dashboard_data(
+                qbo, shopify, period_start.isoformat(), period_end.isoformat(),
+                include_prior_period=False,
+            )
         )
     return results
