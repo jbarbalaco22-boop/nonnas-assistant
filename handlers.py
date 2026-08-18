@@ -200,6 +200,12 @@ def get_sku_revenue_live(qbo: QboContext, start_date: str, end_date: str) -> dic
     creation) - a $0/empty result for a period that should have activity may just mean "not
     indexed yet," not "nothing happened."
 
+    Pre-SKU-posting history: entries from before SKU-level revenue posting was turned on in the
+    connector default to the registry's sole "active" SKU (OO-OO-ORG-500 as of 2026-08-18, the
+    only SKU that was actually selling then) - see nonnas_shared.connectors.sku_financials'
+    docstring for the exact rule. That default turns off automatically once a second SKU goes
+    active.
+
     Settlement-window caveat: this and get_sku_units_live are on two different clocks. Units
     come straight from Shopify (real-time, as orders are placed). Revenue here comes from A2X's
     settlement batches, which only post to QBO after a payout period closes - typically a few
