@@ -448,24 +448,31 @@ def _shift_back_one_year(d: date) -> date:
     return date(year, d.month, d.day)
 
 
-def _prior_comparable_period(start: date, end: date) -> tuple[date, date]:
+def _prior_comparable_period(start: date, end: date, today: date | None = None) -> tuple[date, date]:
     """Picks the actually-meaningful prior period to compare against, based on the shape of the
     requested range, rather than always shifting back one calendar month - which is right for a
     single month-aligned range but wrong for anything else (a Year-to-Date range shifted back
     one month compares an ~8.5-month span to a ~7.5-month span against the wrong prior period
     entirely).
 
-    - Month-aligned (starts on the 1st, ends within that same month) - Month-to-Date, or a
-      fully-closed "Last Month" selection - compares to the same days one calendar month
-      earlier. This is the one case the original single global rule got right.
+    - Month-to-Date (starts on the 1st, ends today) or a fully-closed "Last Month" selection
+      (starts on the 1st, ends on that month's last day) - compares to the same days one
+      calendar month earlier. This is the one case the original single global rule got right.
     - Year-to-date (starts Jan 1 of the end date's year) - compares to the same days one
       calendar year earlier, since a partial year needs to be measured against the same partial
       year, not an arbitrary trailing month.
-    - Anything else (Last 30 Days, a custom range) - compares to the immediately preceding
-      period of equal length, ending the day before this range starts.
+    - Anything else (Last 30 Days, or a Custom Range - including one that happens to start on
+      the 1st, like Aug 1-10) - compares to the immediately preceding period of equal length,
+      ending the day before this range starts. Regression: a Custom Range starting on the 1st
+      used to incorrectly fall into the month-to-date branch just because start.day == 1, even
+      when end wasn't today or the month's last day (e.g. Aug 1-10 showed "vs Jul 1-10" instead
+      of the correct "vs Jul 22-31").
     """
+    today = today or date.today()
     if start.day == 1 and end.year == start.year and end.month == start.month:
-        return _shift_back_one_month(start), _shift_back_one_month(end)
+        last_day_of_month = calendar.monthrange(start.year, start.month)[1]
+        if end == today or end.day == last_day_of_month:
+            return _shift_back_one_month(start), _shift_back_one_month(end)
     if start == date(end.year, 1, 1):
         return _shift_back_one_year(start), _shift_back_one_year(end)
     length = (end - start).days + 1
@@ -474,7 +481,9 @@ def _prior_comparable_period(start: date, end: date) -> tuple[date, date]:
     return prior_start, prior_end
 
 
-def get_period_comparison(qbo: QboContext, start_date: str, end_date: str) -> dict:
+def get_period_comparison(
+    qbo: QboContext, start_date: str, end_date: str, today: date | None = None,
+) -> dict:
     """Returns net_sales/contribution/net_income, company-wide and per channel (net_income is
     company-wide only - it isn't a per-channel concept), for the prior comparable period - powers
     the dashboard's period-over-period deltas. See _prior_comparable_period's docstring for how
@@ -484,9 +493,13 @@ def get_period_comparison(qbo: QboContext, start_date: str, end_date: str) -> di
     get_dashboard_data does, since those aren't needed for a delta - doing the full computation
     for a period whose orders/units/ROAS are never displayed would roughly double this
     endpoint's external API calls for no reason.
+
+    today is only ever passed explicitly by tests - production always leaves it as None (real
+    date.today()), since a genuine Month-to-Date request from the frontend always has
+    end_date == today by construction.
     """
     prior_start, prior_end = _prior_comparable_period(
-        date.fromisoformat(start_date), date.fromisoformat(end_date)
+        date.fromisoformat(start_date), date.fromisoformat(end_date), today=today,
     )
     financials = get_channel_financials_live(qbo, prior_start.isoformat(), prior_end.isoformat())
     channel_margins = financials["channels"]
@@ -507,7 +520,7 @@ def get_period_comparison(qbo: QboContext, start_date: str, end_date: str) -> di
 
 def get_dashboard_data(
     qbo: QboContext, shopify: ShopifyContext, start_date: str, end_date: str,
-    include_prior_period: bool = True,
+    include_prior_period: bool = True, today: date | None = None,
 ) -> dict:
     """Combines a live QBO pull and a live Shopify pull for the same period into one
     dashboard-ready structure: company-wide totals, per-channel margin + health metrics
@@ -561,7 +574,7 @@ def get_dashboard_data(
         "caveat": UNITS_CAVEAT,
     }
     if include_prior_period:
-        result["prior_period"] = get_period_comparison(qbo, start_date, end_date)
+        result["prior_period"] = get_period_comparison(qbo, start_date, end_date, today=today)
     return result
 
 

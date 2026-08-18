@@ -135,7 +135,7 @@ def test_period_comparison_sums_net_sales_and_contribution_only(monkeypatch):
         }
 
     monkeypatch.setattr(handlers, "get_channel_financials_live", fake_financials)
-    result = handlers.get_period_comparison(None, "2026-08-01", "2026-08-17")
+    result = handlers.get_period_comparison(None, "2026-08-01", "2026-08-17", today=date(2026, 8, 17))
 
     assert result["start_date"] == "2026-07-01"
     assert result["end_date"] == "2026-07-17"
@@ -153,11 +153,40 @@ def test_shift_back_one_year_clamps_feb29_in_non_leap_year():
     assert handlers._shift_back_one_year(date(2028, 2, 29)) == date(2027, 2, 28)
 
 
-def test_prior_comparable_period_month_aligned_shifts_one_month():
-    """Month-to-Date (Aug 1-17) and a fully-closed "Last Month" selection both look like this -
-    day 1 through some day within the same month."""
-    prior_start, prior_end = handlers._prior_comparable_period(date(2026, 8, 1), date(2026, 8, 17))
+def test_prior_comparable_period_month_to_date_shifts_one_month():
+    """Month-to-Date: starts on the 1st, ends today."""
+    prior_start, prior_end = handlers._prior_comparable_period(
+        date(2026, 8, 1), date(2026, 8, 17), today=date(2026, 8, 17),
+    )
     assert (prior_start, prior_end) == (date(2026, 7, 1), date(2026, 7, 17))
+
+
+def test_prior_comparable_period_fully_closed_last_month_shifts_one_month():
+    """"Last Month": starts on the 1st, ends on that month's own last day - a genuinely closed
+    month, not just "today happens to be mid-month"."""
+    prior_start, prior_end = handlers._prior_comparable_period(
+        date(2026, 7, 1), date(2026, 7, 31), today=date(2026, 8, 17),
+    )
+    assert (prior_start, prior_end) == (date(2026, 6, 1), date(2026, 6, 30))
+
+
+def test_prior_comparable_period_custom_range_starting_on_1st_uses_equal_length_not_month_shift():
+    """Regression for a real audit finding (2026-08-18): a Custom Range that happens to start on
+    the 1st but neither ends today nor ends the month's last day (e.g. Aug 1-10, picked while
+    "today" is Aug 18) must NOT fall into the month-to-date branch just because start.day == 1 -
+    it should use the same "immediately preceding period of equal length" rule as any other
+    non-month-aligned custom range. Previously this incorrectly returned Jul 1-10; correct is
+    Jul 22-31 (the 10 days immediately before Aug 1)."""
+    prior_start, prior_end = handlers._prior_comparable_period(
+        date(2026, 8, 1), date(2026, 8, 10), today=date(2026, 8, 18),
+    )
+    assert (prior_start, prior_end) == (date(2026, 7, 22), date(2026, 7, 31))
+
+    # Same bug, 3-day range.
+    prior_start, prior_end = handlers._prior_comparable_period(
+        date(2026, 8, 1), date(2026, 8, 3), today=date(2026, 8, 18),
+    )
+    assert (prior_start, prior_end) == (date(2026, 7, 29), date(2026, 7, 31))
 
 
 def test_prior_comparable_period_ytd_shifts_one_year_not_one_month():
@@ -204,7 +233,7 @@ def test_dashboard_includes_prior_period_by_default(monkeypatch):
     monkeypatch.setattr(handlers, "get_channel_financials_live", lambda qbo, s, e: _financials_result())
     monkeypatch.setattr(handlers, "get_channel_units_live", lambda shopify, s, e: _units_result())
 
-    result = handlers.get_dashboard_data(None, None, "2026-08-01", "2026-08-17")
+    result = handlers.get_dashboard_data(None, None, "2026-08-01", "2026-08-17", today=date(2026, 8, 17))
     assert "prior_period" in result
     assert result["prior_period"]["start_date"] == "2026-07-01"
 
