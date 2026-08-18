@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from assistant import _get_qbo_context, _get_shopify_context, ask
 from auth import verify_token
 from handlers import (
+    get_cash_snapshot,
     get_dashboard_data,
     get_monthly_trend,
     get_sku_revenue_live,
@@ -163,6 +164,22 @@ def sku_units_to_date_endpoint(user: str = Depends(verify_token)) -> dict:
     except Exception as e:
         logger.exception("sku-units-to-date failed")
         raise HTTPException(status_code=502, detail=f"Failed to load units to date: {e}") from e
+
+
+@app.get("/cash-snapshot")
+def cash_snapshot_endpoint(user: str = Depends(verify_token)) -> dict:
+    """Cash & Runway tab data - combined bank balance, cash-basis burn rate/runway, a trailing
+    6-month balance trend, and the known founder payroll obligation. See get_cash_snapshot's
+    docstring for why this is cash-basis, not accrual Net Income, and why "known obligations"
+    beyond payroll isn't pulled here (no reliable automated source - the frontend keeps a
+    manual-entry list for that instead). No date params - always "as of today," like
+    /sku-units-to-date."""
+    qbo = _get_qbo_context()
+    try:
+        return get_cash_snapshot(qbo)
+    except Exception as e:
+        logger.exception("cash-snapshot failed")
+        raise HTTPException(status_code=502, detail=f"Failed to load cash snapshot: {e}") from e
 
 
 @app.post("/ask", response_model=AskResponse)

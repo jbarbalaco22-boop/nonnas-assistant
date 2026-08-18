@@ -3,7 +3,7 @@ get_channel_units_live mocked, so this doesn't hit real QBO/Shopify APIs. The co
 (company totals, per-channel health metrics, revenue concentration) was also verified directly
 against real July 2026 data, separately from these unit tests."""
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -492,3 +492,103 @@ def test_sku_revenue_live_uses_shared_qbo_client_and_parser(monkeypatch):
     assert result["skus"]["OO-OO-ORG-500"]["discounts"] == -3.24
     assert round(result["skus"]["OO-OO-ORG-500"]["net"], 2) == 23.76
     assert result["journal_entries_scanned"] == 1
+
+
+def test_estimate_next_payroll_returns_none_with_fewer_than_two_transactions(monkeypatch):
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_gl_account_transactions",
+        lambda *a, **k: [{"date": "2026-08-13", "amount": 5391.65}],
+    )
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    assert handlers._estimate_next_payroll(fake_qbo, date(2026, 8, 18)) is None
+
+
+def test_estimate_next_payroll_projects_from_last_interval(monkeypatch):
+    # Mirrors real data confirmed live 2026-08-18: flat biweekly Founder/Officer Compensation.
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_gl_account_transactions",
+        lambda *a, **k: [
+            {"date": "2026-07-16", "amount": 5391.65},
+            {"date": "2026-07-30", "amount": 5391.65},
+            {"date": "2026-08-13", "amount": 5391.65},
+        ],
+    )
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers._estimate_next_payroll(fake_qbo, date(2026, 8, 18))
+    assert result == {
+        "amount": 5391.65, "last_date": "2026-08-13", "cadence_days": 14,
+        "next_estimated_date": "2026-08-27",
+    }
+
+
+def test_get_cash_snapshot_computes_cash_basis_burn_and_runway_not_net_income(monkeypatch):
+    """The whole point of this tab: burn/runway come from the actual change in cash balance,
+    not from accrual Net Income - this test uses deliberately different values for the two so a
+    regression that swaps one for the other would fail loudly."""
+    monkeypatch.setattr(
+        handlers, "load_qbo_account_map",
+        lambda: {"bank_cash": ["11100 Chase Operating Bank Account"]},
+    )
+    today = date(2026, 8, 18)
+    lookback_start = today - timedelta(days=90)
+    known_balances = {today: 9000.0, lookback_start: 9900.0}
+
+    def fake_balance(realm_id, access_token, prefixes, as_of_date, environment="production"):
+        return known_balances.get(as_of_date, 5000.0)  # trend-point calls get an arbitrary value
+
+    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_balance", fake_balance)
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_profit_and_loss_by_class",
+        lambda realm_id, access_token, start, end, environment="production": {
+            "Income": {"41100 Product Revenue": {"Total": 1000.0}},
+            "Expenses": {"General Admin": {"Total": 2000.0}},
+        },
+    )
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_gl_account_transactions",
+        lambda *a, **k: [
+            {"date": "2026-07-30", "amount": 5391.65},
+            {"date": "2026-08-13", "amount": 5391.65},
+        ],
+    )
+
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_cash_snapshot(fake_qbo, today=today)
+
+    assert result["cash_balance"] == 9000.0
+    assert result["cash_balance_90d_ago"] == 9900.0
+    assert result["net_cash_change_90d"] == -900.0
+    assert result["monthly_burn"] == 300.0
+    assert result["runway_months"] == 30.0
+    assert result["net_income_90d"] == -1000.0  # 1000 income - 2000 expenses - deliberately
+    # different from the cash-basis numbers above, confirming they're computed independently
+    assert len(result["balance_trend"]) == 6
+    assert result["known_payroll"]["amount"] == 5391.65
+    assert result["known_payroll"]["cadence_days"] == 14
+
+
+def test_get_cash_snapshot_runway_is_none_when_not_burning_cash(monkeypatch):
+    monkeypatch.setattr(
+        handlers, "load_qbo_account_map",
+        lambda: {"bank_cash": ["11100 Chase Operating Bank Account"]},
+    )
+    today = date(2026, 8, 18)
+    lookback_start = today - timedelta(days=90)
+    # Cash grew, not shrank, over the trailing 90 days.
+    known_balances = {today: 10000.0, lookback_start: 9000.0}
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_gl_account_balance",
+        lambda realm_id, access_token, prefixes, as_of_date, environment="production": known_balances.get(as_of_date, 5000.0),
+    )
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_profit_and_loss_by_class",
+        lambda realm_id, access_token, start, end, environment="production": {},
+    )
+    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_transactions", lambda *a, **k: [])
+
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_cash_snapshot(fake_qbo, today=today)
+
+    assert result["monthly_burn"] < 0  # negative burn = growing cash
+    assert result["runway_months"] is None
+    assert result["known_payroll"] is None

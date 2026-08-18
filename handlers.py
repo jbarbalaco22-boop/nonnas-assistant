@@ -8,7 +8,7 @@ import json
 import os
 from datetime import date, datetime, timedelta, timezone
 
-from nonnas_shared.config import load_channel_units_by_month, load_sku_map
+from nonnas_shared.config import load_channel_units_by_month, load_qbo_account_map, load_sku_map
 from nonnas_shared.connectors import channel_financials
 from nonnas_shared.connectors import qbo_client as shared_qbo
 from nonnas_shared.connectors import shopify_client as shared_shopify
@@ -602,3 +602,124 @@ def get_monthly_trend(
             )
         )
     return results
+
+
+FOUNDER_PAYROLL_ACCOUNT_PREFIX = "71100 Founder/Officer Compensation"
+
+
+def _estimate_next_payroll(qbo: QboContext, today: date) -> dict | None:
+    """Looks back 120 days for Founder/Officer Compensation postings (flat, biweekly, via
+    Paychex, per the business - confirmed live 2026-08-18: five real payments at a consistent
+    14-day interval) and projects the next one from the last two payments' interval and amount.
+    Returns None if fewer than two payments were found in the window - not enough to infer a
+    cadence from.
+    """
+    lookback = today - timedelta(days=120)
+    txns = shared_qbo.fetch_gl_account_transactions(
+        qbo.realm_id, qbo.access_token, FOUNDER_PAYROLL_ACCOUNT_PREFIX, lookback, today,
+        environment=qbo.environment,
+    )
+    if len(txns) < 2:
+        return None
+    txns.sort(key=lambda t: t["date"])
+    last_date = date.fromisoformat(txns[-1]["date"])
+    prior_date = date.fromisoformat(txns[-2]["date"])
+    interval_days = (last_date - prior_date).days
+    if interval_days <= 0:
+        return None
+    next_date = last_date + timedelta(days=interval_days)
+    return {
+        "amount": txns[-1]["amount"],
+        "last_date": txns[-1]["date"],
+        "cadence_days": interval_days,
+        "next_estimated_date": next_date.isoformat(),
+    }
+
+
+def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
+    """Cash-basis snapshot for the Cash & Runway tab: combined bank balance, burn rate and
+    runway computed from the ACTUAL change in that balance (not accrual Net Income - see below),
+    plus a trailing 6-month balance trend and the one recurring obligation this business
+    currently has a reliable automated signal for (founder payroll).
+
+    Why cash-basis, not Net Income, for burn/runway: the whole reason this tab exists is that
+    Net Income doesn't reflect cash reality - inventory purchases hit cash the day they're paid
+    for, not when later recognized as COGS. Confirmed live (2026-08-18) this genuinely matters
+    here: the trailing 90 days had accrual Net Income of -$81,448.59 but actual cash only fell
+    $38,728.76 - a $42,719.83 gap. Net Income is still returned, as a supporting comparison
+    figure, never as the burn number itself.
+
+    Combined cash balance uses qbo_account_map.json's "bank_cash" list (the 2 operating accounts
+    + the high-yield account, per the business) via fetch_gl_account_balance - GeneralLedger with
+    an explicit end_date, not BalanceSheet (see that function's docstring for why). Cross-checked
+    live against Account.CurrentBalance for the as-of-today case: exact match.
+
+    Known obligations: this business doesn't currently track upcoming vendor bills/POs as
+    forward-looking commitments (confirmed with the business 2026-08-18) - real Bill records do
+    exist in QBO, but their due dates consistently land the same day as, or one day after, the
+    transaction date, indicating they're entered when paid, not planned ahead of time. So the
+    only obligation with a reliable automated signal here is founder payroll - everything else
+    is a manual-entry list on the frontend, not pulled by this function.
+
+    Several sequential QBO calls (balance x2, P&L, 6 monthly balance points, payroll history) -
+    slower than the other live tools, same "on-demand, not polled" tradeoff already accepted for
+    SKU Revenue.
+    """
+    today = today or date.today()
+    lookback_start = today - timedelta(days=90)
+    account_prefixes = load_qbo_account_map()["bank_cash"]
+
+    balance_today = shared_qbo.fetch_gl_account_balance(
+        qbo.realm_id, qbo.access_token, account_prefixes, today, environment=qbo.environment,
+    )
+    balance_90d_ago = shared_qbo.fetch_gl_account_balance(
+        qbo.realm_id, qbo.access_token, account_prefixes, lookback_start, environment=qbo.environment,
+    )
+    net_cash_change_90d = balance_today - balance_90d_ago
+    monthly_burn = -net_cash_change_90d / 3  # positive = burning cash, negative = growing
+    runway_months = (balance_today / monthly_burn) if monthly_burn > 0 else None
+
+    pl_data = shared_qbo.fetch_profit_and_loss_by_class(
+        qbo.realm_id, qbo.access_token, lookback_start, today, environment=qbo.environment,
+    )
+    net_income_90d = channel_financials.compute_net_income(pl_data)["net_income"]
+
+    # Trailing 6-month balance trend - same "6 months ending this month" window get_monthly_trend
+    # uses elsewhere; one GL pull per month-end (current month uses today, not month-end, same as
+    # get_monthly_trend's "always in progress" current period).
+    first_of_this_month = today.replace(day=1)
+    y, m = first_of_this_month.year, first_of_this_month.month
+    month_starts = []
+    for _ in range(6):
+        month_starts.append(date(y, m, 1))
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    month_starts.reverse()
+
+    balance_trend = []
+    for i, month_start in enumerate(month_starts):
+        is_current = i == len(month_starts) - 1
+        if is_current:
+            as_of = today
+        else:
+            last_day = calendar.monthrange(month_start.year, month_start.month)[1]
+            as_of = date(month_start.year, month_start.month, last_day)
+        balance = shared_qbo.fetch_gl_account_balance(
+            qbo.realm_id, qbo.access_token, account_prefixes, as_of, environment=qbo.environment,
+        )
+        balance_trend.append({"month": month_start.isoformat()[:7], "as_of": as_of.isoformat(), "balance": balance})
+
+    return {
+        "as_of": today.isoformat(),
+        "cash_balance": balance_today,
+        "cash_balance_90d_ago": balance_90d_ago,
+        "lookback_start": lookback_start.isoformat(),
+        "net_cash_change_90d": net_cash_change_90d,
+        "monthly_burn": monthly_burn,
+        "runway_months": runway_months,
+        "net_income_90d": net_income_90d,
+        "balance_trend": balance_trend,
+        "known_payroll": _estimate_next_payroll(qbo, today),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }

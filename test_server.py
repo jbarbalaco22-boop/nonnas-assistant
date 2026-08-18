@@ -268,3 +268,31 @@ def test_sku_units_to_date_returns_502_on_failure(monkeypatch):
     response = client.get("/sku-units-to-date", headers=AUTH_HEADER)
     assert response.status_code == 502
     assert "reference file missing" in response.json()["detail"]
+
+
+def test_cash_snapshot_rejects_missing_auth():
+    response = client.get("/cash-snapshot")
+    assert response.status_code == 401
+
+
+def test_cash_snapshot_calls_handler(monkeypatch):
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
+    monkeypatch.setattr(
+        server, "get_cash_snapshot",
+        lambda qbo: {"cash_balance": 67029.26, "monthly_burn": 12909.59, "runway_months": 5.19},
+    )
+    response = client.get("/cash-snapshot", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    assert response.json()["cash_balance"] == 67029.26
+
+
+def test_cash_snapshot_returns_502_on_failure(monkeypatch):
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
+
+    def _boom(qbo):
+        raise RuntimeError("QBO GL pull failed")
+
+    monkeypatch.setattr(server, "get_cash_snapshot", _boom)
+    response = client.get("/cash-snapshot", headers=AUTH_HEADER)
+    assert response.status_code == 502
+    assert "QBO GL pull failed" in response.json()["detail"]
