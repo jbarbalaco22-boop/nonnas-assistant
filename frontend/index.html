@@ -5,30 +5,42 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Harvest</title>
 <link rel="icon" type="image/png" id="favicon-link">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f7f5f2;
+    --bg: #FAF7F1;
     --panel: #ffffff;
-    --border: #e0dcd5;
-    --text: #2b2620;
-    --muted: #8a8378;
-    --accent: #7a5c3e;
-    --accent-dark: #5f4630;
-    --user-bubble: #7a5c3e;
-    --assistant-bubble: #eee9e2;
-    --error: #b3432b;
-    --success: #3f7d4f;
-    --warn-bg: #fbf1de;
-    --warn-text: #93650f;
-    --chart-dtc: #7a5c3e;
-    --chart-tiktok: #3d7a8c;
-    --chart-amazon: #b3432b;
-    --chart-wholesale: #93650f;
+    --border: #E9E1D2;
+    --text: #2E3550;
+    --slate: #666C7C;
+    --muted: #8B90A0;
+    --accent: #BA654C;
+    --accent-dark: #96482F;
+    --indigo: #35478A;
+    --gold: #B8863A;
+    --sage: #7C8A6C;
+    --user-bubble: #BA654C;
+    --assistant-bubble: #F2ECDF;
+    --error: #A6392E;
+    --success: #2F6B3A;
+    --error-bg: #F7EAE8;
+    --success-bg: #EAF2EA;
+    --warn-bg: #FBEEDF;
+    --warn-text: #96482F;
+    --chart-dtc: #BA654C;
+    --chart-tiktok: #35478A;
+    --chart-amazon: #8B90A0;
+    --chart-wholesale: #B8863A;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--font-ui);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
     background: var(--bg);
     color: var(--text);
     height: 100vh;
@@ -53,7 +65,11 @@
     width: 100%;
     text-align: center;
   }
-  #login-box h1 { font-size: 20px; margin: 0 0 8px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  #login-box h1 {
+    font-family: var(--font-display); font-style: italic; font-weight: 700; font-size: 22px;
+    margin: 0 0 8px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    color: var(--accent-dark);
+  }
   #login-box h1 .logo-icon { width: 32px; height: 32px; }
   #login-box p { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
   #login-box input {
@@ -89,12 +105,16 @@
     gap: 16px;
     flex-shrink: 0;
   }
-  header h1 { font-size: 16px; margin: 0; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+  header h1 {
+    font-family: var(--font-display); font-style: italic; font-weight: 700; font-size: 18px;
+    margin: 0; white-space: nowrap; display: flex; align-items: center; gap: 8px;
+    color: var(--accent-dark);
+  }
   header h1 .logo-icon { width: 24px; height: 24px; }
   #header-right { display: flex; align-items: center; gap: 16px; }
-  #signed-in-as { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  #signed-in-as { font-size: 13px; color: var(--slate); white-space: nowrap; }
   #signed-in-as button {
-    background: none; border: none; color: var(--accent); cursor: pointer;
+    background: none; border: none; color: var(--indigo); cursor: pointer;
     font-size: 13px; text-decoration: underline; padding: 0; margin-left: 8px;
   }
 
@@ -103,9 +123,35 @@
 
   /* ---- Dashboard view ---- */
   #dashboard-view { flex: 1; overflow-y: auto; min-width: 0; padding: 24px; }
+  /* Centered max-width rather than stretching edge-to-edge on wide monitors when the chat
+     panel is closed - matches the mockup's .wrap. Still fills the full width on narrower
+     screens/with chat open, since max-width only caps, never forces, the available space. */
+  #dashboard-content { max-width: 1180px; margin: 0 auto; }
   #dashboard-status { color: var(--muted); font-size: 14px; }
   #dashboard-status.error { color: var(--error); }
   #freshness-bar { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+
+  #insight-strip {
+    display: none; /* shown via JS only when there's something worth saying */
+    gap: 16px;
+    background: linear-gradient(135deg, #F3E3D6, #F7ECDD);
+    border: 1px solid #E9CFAE;
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+  }
+  #insight-strip .insight-icon { flex: 0 0 auto; font-size: 24px; line-height: 1; margin-top: 2px; }
+  #insight-strip b {
+    display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent-dark); margin-bottom: 8px;
+  }
+  #insight-strip ul { margin: 0; padding-left: 18px; }
+  #insight-strip li { font-size: 13.5px; line-height: 1.65; color: var(--text); margin-bottom: 4px; }
+  #insight-strip li:last-child { margin-bottom: 0; }
+
+  select:focus-visible, button:focus-visible, .info-icon:focus-visible {
+    outline: 2px solid var(--indigo); outline-offset: 2px;
+  }
 
   #range-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   #range-preset {
@@ -113,6 +159,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 13px;
+    font-weight: 600;
     background: var(--panel);
     color: var(--text);
     font-family: inherit;
@@ -143,27 +190,47 @@
     padding: 18px 20px;
   }
   #company-card { margin-bottom: 20px; }
-  #company-card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 12px; }
+  #company-card h2 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--slate); margin: 0 0 12px; }
   #company-stats { display: flex; gap: 32px; flex-wrap: wrap; }
   #company-card .metric-row { margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .stat .stat-value { font-size: 26px; font-weight: 700; }
-  .stat .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .stat .stat-label { font-size: 12.5px; color: var(--slate); margin-top: 2px; }
+  .delta { font-size: 12px; font-weight: 600; margin-top: 5px; }
+  .delta.up { color: var(--success); }
+  .delta.down { color: var(--error); }
+  .delta.flat { color: var(--muted); }
   .positive { color: var(--success); }
   .negative { color: var(--error); }
 
+  /* grid-template-columns is set inline by JS per render, since it depends on how many
+     channels get "full" vs "secondary" treatment this period (see renderChannelGrid). */
   #channel-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 16px;
+    align-items: start;
   }
+  .channel-secondary-col { display: flex; flex-direction: column; gap: 16px; }
   .channel-card h3 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
-  .caveat-badge {
-    font-size: 10px; background: var(--warn-bg); color: var(--warn-text);
-    padding: 2px 6px; border-radius: 4px; font-weight: 600; letter-spacing: 0.03em;
+  .channel-card.muted { opacity: 0.92; }
+  .chip {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em;
+    padding: 3px 8px; border-radius: 6px; margin-left: 8px; vertical-align: middle;
   }
-  .channel-card .revenue-share { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .chip.limited { background: #EFEDF6; color: var(--indigo); }
+  .channel-card .revenue-share { font-size: 12px; color: var(--slate); margin-bottom: 12px; }
   .channel-card .primary-stat { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
-  .channel-card .primary-stat-label { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .channel-card .primary-stat-label { font-size: 12px; color: var(--slate); margin-bottom: 12px; }
+  .channel-card .muted-note {
+    font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 12px;
+    padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .channel-empty-card {
+    background: var(--panel); border: 1px dashed var(--border); border-radius: 12px;
+    padding: 20px 22px; display: flex; flex-direction: column; justify-content: center;
+    min-height: 100%;
+  }
+  .channel-empty-card h3 { font-size: 15px; margin: 0 0 6px; }
+  .channel-empty-card p { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin: 0; }
   .metric-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -173,9 +240,9 @@
     padding-top: 10px;
   }
   .metric-row div { display: flex; justify-content: space-between; }
-  .metric-row .metric-label { color: var(--muted); }
+  .metric-row .metric-label { color: var(--slate); }
   #dashboard-caveat {
-    margin-top: 20px; font-size: 12px; color: var(--muted); background: var(--warn-bg);
+    margin-top: 20px; font-size: 12px; color: var(--slate); background: var(--warn-bg);
     padding: 10px 14px; border-radius: 8px; line-height: 1.5;
   }
   #contribution-note {
@@ -360,6 +427,9 @@
     #dashboard-view { padding: 16px; }
     header { padding: 10px 14px; }
     #chat-toggle-btn span.label { display: none; }
+    /* Full/secondary asymmetric columns (set inline by JS) don't fit a narrow screen -
+       force everything to a single stacked column regardless of what JS computed. */
+    #channel-grid { grid-template-columns: 1fr !important; }
   }
 </style>
 </head>
@@ -404,6 +474,13 @@
           </div>
         </div>
         <div id="freshness-bar"></div>
+        <div id="insight-strip">
+          <div class="insight-icon">💡</div>
+          <div class="insight-body">
+            <b>What's driving this period</b>
+            <ul id="insight-list"></ul>
+          </div>
+        </div>
         <div id="company-card" class="card"></div>
         <div id="channel-grid"></div>
         <div id="dashboard-caveat"></div>
@@ -584,6 +661,14 @@
     if (n === null || n === undefined) return "—";
     return (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
   }
+  // Explicit "+" on positive figures rather than relying on color alone (accessibility) - used
+  // for values that are meaningfully signed (can legitimately land on either side of zero:
+  // contribution, net income, deltas), NOT for values like Net Sales/Ad Spend that are always
+  // non-negative in practice, where a "+" would just be visual noise.
+  function fmtSignedCurrency(n) {
+    if (n === null || n === undefined) return "—";
+    return (n >= 0 ? "+$" : "-$") + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
   function fmtPercent(n) {
     if (n === null || n === undefined) return "—";
     return (n * 100).toFixed(1) + "%";
@@ -606,9 +691,46 @@
       month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
     });
   }
+  // Short "Jul 1–17" style label for a date range, used in period-over-period delta text.
+  function fmtShortRange(startIso, endIso) {
+    const s = new Date(startIso + "T00:00:00Z");
+    const e = new Date(endIso + "T00:00:00Z");
+    const opts = { month: "short", timeZone: "UTC" };
+    const sMonth = s.toLocaleDateString("en-US", opts);
+    const eMonth = e.toLocaleDateString("en-US", opts);
+    if (sMonth === eMonth) return `${sMonth} ${s.getUTCDate()}–${e.getUTCDate()}`;
+    return `${sMonth} ${s.getUTCDate()} – ${eMonth} ${e.getUTCDate()}`;
+  }
+
+  // ---- Period-over-period deltas ----
+  // Net Sales uses % change (a plain "$X more/less" is harder to judge at a glance for
+  // revenue). Contribution uses $ change, not %, because it crosses zero and percent math
+  // gets misleading there (e.g. -$100 -> -$50 is "50% better" but also "a 50% decline" by
+  // naive sign-blind math). Both use plain signed subtraction (current - prior) for direction,
+  // which correctly handles "contribution got MORE negative" as "down" even though its
+  // magnitude increased - a magnitude-based check would get that backwards.
+  function renderNetSalesDelta(current, priorPeriod) {
+    if (!priorPeriod || !priorPeriod.company.net_sales) return ""; // no meaningful % vs $0
+    const prior = priorPeriod.company.net_sales;
+    const pctChange = ((current - prior) / prior) * 100;
+    const rangeLabel = fmtShortRange(priorPeriod.start_date, priorPeriod.end_date);
+    if (Math.abs(pctChange) < 0.5) return `<div class="delta flat">— flat vs ${rangeLabel}</div>`;
+    const dir = pctChange > 0 ? "up" : "down";
+    const arrow = pctChange > 0 ? "▲" : "▼";
+    return `<div class="delta ${dir}">${arrow} ${Math.abs(pctChange).toFixed(0)}% vs ${rangeLabel}</div>`;
+  }
+  function renderContributionDelta(current, prior, rangeLabel) {
+    if (prior === null || prior === undefined) return "";
+    const delta = current - prior;
+    if (Math.abs(delta) < 0.5) return `<div class="delta flat">— flat vs ${rangeLabel}</div>`;
+    const dir = delta > 0 ? "up" : "down";
+    const arrow = delta > 0 ? "▲" : "▼";
+    const word = delta > 0 ? "better than" : "worse than";
+    return `<div class="delta ${dir}">${arrow} ${fmtCurrency(Math.abs(delta))} ${word} ${rangeLabel}</div>`;
+  }
 
   const TOOLTIPS = {
-    contribution: "Revenue minus product cost, fulfillment, ad spend, and marketing tools. Does NOT include overhead (payroll, rent, insurance, admin, etc.) — see the note below.",
+    contribution: "Revenue minus product cost, fulfillment, ad spend, and marketing tools (COGS, 3PL, ads, discounts, refunds). Excludes company-wide overhead — payroll, rent, insurance, admin, and similar fixed costs not tied to a channel.",
     netIncome: "The company's true bottom line: revenue minus every cost, including overhead. This is what \"are we actually making money\" means.",
     overhead: "Company-wide costs not tied to any one channel — payroll, rent, insurance, legal, admin, and similar. Contribution minus Overhead equals Net Income.",
     ads: "Paid advertising only: Meta, Google, TikTok Ads, Amazon Ads, and (for DTC) Marketplace Advertising.",
@@ -617,6 +739,7 @@
     discountRate: "Total discounts given, as a percent of gross sales before discounts.",
     refundRate: "Total refunds, as a percent of gross sales before refunds.",
     ordersUnits: "Source: Shopify order data.",
+    limitedData: "Amazon orders rarely flow through Shopify at all (no direct Amazon connection yet). Wholesale revenue is typically recorded as a bank deposit with no item/quantity, so it often shows zero units even when real sales happened. Treat DTC and TikTok as reliable; Amazon and Wholesale as directional at best.",
   };
   function infoIcon(key) {
     return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
@@ -631,21 +754,173 @@
     if (icon) icon.classList.toggle("tapped");
   });
 
+  // ---- "What's driving this period" insight strip ----
+  // Simple rule-based text from data the dashboard already computes - no new data source or
+  // LLM call. Only shows when there's something worth flagging (a real move, a real gap).
+  function generateInsights(data) {
+    const insights = [];
+    const pp = data.prior_period;
+
+    if (pp && pp.company.net_sales) {
+      const pctChange = ((data.company.net_sales - pp.company.net_sales) / pp.company.net_sales) * 100;
+      if (Math.abs(pctChange) >= 3) {
+        const rangeLabel = fmtShortRange(pp.start_date, pp.end_date);
+        const dir = pctChange > 0 ? "up" : "down";
+        let driver = null, driverDelta = 0;
+        for (const ch of CHANNELS) {
+          const cur = data.channels[ch] ? data.channels[ch].net_sales : 0;
+          const prev = pp.channels[ch] ? pp.channels[ch].net_sales : 0;
+          const d = cur - prev;
+          if (Math.abs(d) > Math.abs(driverDelta)) { driverDelta = d; driver = ch; }
+        }
+        const driverText = driver ? `, driven mostly by ${driver}` : "";
+        insights.push(`Net Sales is ${dir} ${Math.abs(pctChange).toFixed(0)}% vs. ${rangeLabel}${driverText}.`);
+      }
+    }
+
+    // Limited Data channels (e.g. Amazon) are excluded from this comparison - their discount
+    // rate isn't reliably trustworthy anyway, and letting one sit at the low end just produces
+    // a meaningless "Nx" multiple against an unreliable baseline.
+    const rateEntries = CHANNELS
+      .filter((ch) => !UNRELIABLE_CHANNELS.has(ch))
+      .map((ch) => ({ ch, ...data.channels[ch] }))
+      .filter((e) => e.discount_rate !== null && e.discount_rate !== undefined && e.net_sales > 0);
+    if (rateEntries.length >= 2) {
+      const lowest = rateEntries.reduce((a, b) => (a.discount_rate < b.discount_rate ? a : b));
+      const highest = rateEntries.reduce((a, b) => (a.discount_rate > b.discount_rate ? a : b));
+      if (lowest.discount_rate > 0 && highest.ch !== lowest.ch && highest.discount_rate >= lowest.discount_rate * 2) {
+        const multiple = (highest.discount_rate / lowest.discount_rate).toFixed(1);
+        const marginText = highest.contribution_pct !== null && highest.contribution_pct !== undefined
+          ? ` — a likely factor in its ${fmtPercent(highest.contribution_pct)} margin`
+          : "";
+        insights.push(`${highest.ch}'s ${fmtPercent(highest.discount_rate)} discount rate is ${multiple}x ${lowest.ch}'s ${fmtPercent(lowest.discount_rate)}${marginText}.`);
+      }
+    }
+
+    return insights;
+  }
+  function renderInsightStrip(data) {
+    const insights = generateInsights(data);
+    const section = document.getElementById("insight-strip");
+    if (insights.length === 0) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "flex";
+    document.getElementById("insight-list").innerHTML = insights.map((t) => `<li>${t}</li>`).join("");
+  }
+
+  // ---- Channel cards: full detail for real-volume channels, a quieter "muted" card for
+  // ~0%-revenue/Limited-Data channels, and a compact empty state for channels with nothing at
+  // all this period - rather than nine fields of zeros getting the same visual weight as DTC.
+  function classifyChannel(ch, m) {
+    if (m.net_sales === 0 && m.orders === 0) return "empty";
+    if (UNRELIABLE_CHANNELS.has(ch) || m.revenue_share < 0.03) return "muted";
+    return "full";
+  }
+  function buildFullChannelCard(ch, m, priorPeriod, rangeLabel) {
+    const contribClass = m.contribution >= 0 ? "positive" : "negative";
+    const priorContribution = priorPeriod && priorPeriod.channels[ch] ? priorPeriod.channels[ch].contribution : null;
+    const deltaHtml = priorPeriod ? renderContributionDelta(m.contribution, priorContribution, rangeLabel) : "";
+    const card = document.createElement("div");
+    card.className = "card channel-card";
+    card.innerHTML = `
+      <h3>${ch}</h3>
+      <div class="revenue-share">${fmtPercent(m.revenue_share)} of total revenue</div>
+      <div class="primary-stat ${contribClass}">${fmtSignedCurrency(m.contribution)}</div>
+      <div class="primary-stat-label">Contribution before overhead (${fmtPercent(m.contribution_pct)} margin)${infoIcon("contribution")}</div>
+      ${deltaHtml}
+      <div class="metric-row">
+        <div><span class="metric-label">Net Sales</span><span>${fmtCurrency(m.net_sales)}</span></div>
+        <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.orders)}</span></div>
+        <div><span class="metric-label">AOV</span><span>${fmtCurrency(m.aov)}</span></div>
+        <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.units)}</span></div>
+        <div><span class="metric-label">Discount Rate${infoIcon("discountRate")}</span><span>${fmtPercent(m.discount_rate)}</span></div>
+        <div><span class="metric-label">Refund Rate${infoIcon("refundRate")}</span><span>${fmtPercent(m.refund_rate)}</span></div>
+        <div><span class="metric-label">ROAS${infoIcon("roas")}</span><span>${m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—"}</span></div>
+        <div><span class="metric-label">Ad Spend${infoIcon("ads")}</span><span>${fmtCurrency(m.ads)}</span></div>
+        <div><span class="metric-label">Other Marketing${infoIcon("otherMarketing")}</span><span>${fmtCurrency(m.other_marketing)}</span></div>
+      </div>
+    `;
+    return card;
+  }
+  function buildMutedChannelCard(ch, m) {
+    const card = document.createElement("div");
+    card.className = "card channel-card muted";
+    const chip = UNRELIABLE_CHANNELS.has(ch) ? `<span class="chip limited">Limited</span>` : "";
+    card.innerHTML = `
+      <h3>${ch}${chip}</h3>
+      <div class="revenue-share">${fmtPercent(m.revenue_share)} of revenue</div>
+      <div class="primary-stat" style="font-size:19px;color:var(--slate)">${fmtCurrency(m.net_sales)} <span style="font-size:11.5px;font-weight:500;color:var(--muted)">net sales</span></div>
+      <div class="primary-stat-label">${fmtNumber(m.orders)} orders</div>
+      <div class="muted-note">Limited real volume or known-incomplete data this period — see the note below for details.</div>
+    `;
+    return card;
+  }
+  function buildEmptyChannelCard(ch) {
+    const card = document.createElement("div");
+    card.className = "channel-empty-card";
+    const note = ch === "Wholesale"
+      ? "No wholesale orders recorded this period. Wholesale posts as a bank deposit with no item detail, so this may under-report."
+      : `No ${ch} orders recorded this period.`;
+    card.innerHTML = `<h3>${ch}</h3><p>${note}</p>`;
+    return card;
+  }
+  function renderChannelGrid(data) {
+    const grid = document.getElementById("channel-grid");
+    grid.innerHTML = "";
+
+    const entries = CHANNELS.map((ch) => ({ ch, m: data.channels[ch] })).filter((e) => e.m);
+    entries.forEach((e) => { e.tier = classifyChannel(e.ch, e.m); });
+    entries.sort((a, b) => b.m.revenue_share - a.m.revenue_share);
+
+    const full = entries.filter((e) => e.tier === "full");
+    const secondary = entries.filter((e) => e.tier !== "full");
+    const priorPeriod = data.prior_period;
+    const rangeLabel = priorPeriod ? fmtShortRange(priorPeriod.start_date, priorPeriod.end_date) : "";
+
+    if (full.length === 0 || secondary.length === 0) {
+      // Either every channel gets full treatment, or every channel is quiet/limited - the
+      // asymmetric "wide cards + narrow sidebar" layout only makes sense with an actual mix.
+      grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(240px, 1fr))";
+      entries.forEach(({ ch, m, tier }) => {
+        if (tier === "full") grid.appendChild(buildFullChannelCard(ch, m, priorPeriod, rangeLabel));
+        else if (tier === "empty") grid.appendChild(buildEmptyChannelCard(ch));
+        else grid.appendChild(buildMutedChannelCard(ch, m));
+      });
+      return;
+    }
+
+    grid.style.gridTemplateColumns = `repeat(${full.length}, 1.3fr) 0.85fr`;
+    full.forEach(({ ch, m }) => grid.appendChild(buildFullChannelCard(ch, m, priorPeriod, rangeLabel)));
+    const col = document.createElement("div");
+    col.className = "channel-secondary-col";
+    secondary.forEach(({ ch, m, tier }) => {
+      col.appendChild(tier === "empty" ? buildEmptyChannelCard(ch) : buildMutedChannelCard(ch, m));
+    });
+    grid.appendChild(col);
+  }
+
   function renderDashboard(data) {
     document.getElementById("freshness-bar").textContent =
       `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.generated_at)}`;
 
+    renderInsightStrip(data);
+
     const c = data.company;
+    const pp = data.prior_period;
     const contribClass = c.contribution >= 0 ? "positive" : "negative";
     const netIncomeClass = c.net_income >= 0 ? "positive" : "negative";
+    const netSalesDelta = renderNetSalesDelta(c.net_sales, pp);
+    const contribDelta = pp ? renderContributionDelta(c.contribution, pp.company.contribution, fmtShortRange(pp.start_date, pp.end_date)) : "";
     document.getElementById("company-card").innerHTML = `
       <h2>Company Overview</h2>
       <div id="company-stats">
-        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div></div>
-        <div class="stat"><div class="stat-value ${contribClass}">${fmtCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div></div>
-        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtCurrency(c.net_income)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div></div>
+        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}</div>
+        <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}</div>
+        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(c.net_income)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div></div>
       </div>
-      <div id="contribution-note">Contribution does not include overhead — payroll, rent, insurance, admin, and other company-wide costs. Net Income above is the real bottom line, after everything.</div>
+      <div id="contribution-note">Contribution excludes overhead — Net Income above is the real bottom line.</div>
       <div class="metric-row">
         <div><span class="metric-label">Contribution Margin</span><span>${fmtPercent(c.contribution_pct)}</span></div>
         <div><span class="metric-label">Overhead${infoIcon("overhead")}</span><span>${fmtCurrency(c.overhead)}</span></div>
@@ -660,38 +935,11 @@
       </div>
     `;
 
-    const grid = document.getElementById("channel-grid");
-    grid.innerHTML = "";
-    for (const ch of CHANNELS) {
-      const m = data.channels[ch];
-      if (!m) continue;
-      const contribClass = m.contribution >= 0 ? "positive" : "negative";
-      const badge = UNRELIABLE_CHANNELS.has(ch)
-        ? `<span class="caveat-badge" title="See caveat below">LIMITED DATA</span>`
-        : "";
-      const card = document.createElement("div");
-      card.className = "card channel-card";
-      card.innerHTML = `
-        <h3>${ch} ${badge}</h3>
-        <div class="revenue-share">${fmtPercent(m.revenue_share)} of total revenue</div>
-        <div class="primary-stat ${contribClass}">${fmtCurrency(m.contribution)}</div>
-        <div class="primary-stat-label">Contribution before overhead (${fmtPercent(m.contribution_pct)} margin)${infoIcon("contribution")}</div>
-        <div class="metric-row">
-          <div><span class="metric-label">Net Sales</span><span>${fmtCurrency(m.net_sales)}</span></div>
-          <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.orders)}</span></div>
-          <div><span class="metric-label">AOV</span><span>${fmtCurrency(m.aov)}</span></div>
-          <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.units)}</span></div>
-          <div><span class="metric-label">Discount Rate${infoIcon("discountRate")}</span><span>${fmtPercent(m.discount_rate)}</span></div>
-          <div><span class="metric-label">Refund Rate${infoIcon("refundRate")}</span><span>${fmtPercent(m.refund_rate)}</span></div>
-          <div><span class="metric-label">ROAS${infoIcon("roas")}</span><span>${m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—"}</span></div>
-          <div><span class="metric-label">Ad Spend${infoIcon("ads")}</span><span>${fmtCurrency(m.ads)}</span></div>
-          <div><span class="metric-label">Other Marketing${infoIcon("otherMarketing")}</span><span>${fmtCurrency(m.other_marketing)}</span></div>
-        </div>
-      `;
-      grid.appendChild(card);
-    }
+    renderChannelGrid(data);
 
-    document.getElementById("dashboard-caveat").textContent = data.caveat || "";
+    document.getElementById("dashboard-caveat").innerHTML = data.caveat
+      ? `Amazon and Wholesale unit/order counts are known-incomplete — treat them as directional, not precise.${infoIcon("limitedData")}`
+      : "";
   }
 
   async function loadDashboard() {
@@ -821,7 +1069,11 @@
   // distorted into ellipses when a card is narrower or wider than some assumed design width.
   // The container must already be visible (not display:none) when these are called, or
   // clientWidth reads 0.
-  function renderLineChart(containerId, points, { color, format }) {
+  // inProgressIndex marks one point/bar (normally the last - the current, still-accruing
+  // month) as visually distinct: a dashed final line segment and a hollow marker for line
+  // charts, a lighter dashed-outline fill for the bar chart - so it reads as "not final yet"
+  // rather than looking like a completed month.
+  function renderLineChart(containerId, points, { color, format, inProgressIndex = null }) {
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 200);
     const height = 150;
@@ -833,16 +1085,29 @@
     const xStep = points.length > 1 ? plotW / (points.length - 1) : 0;
     const xScale = (i) => pad.left + i * xStep;
     const yScale = (v) => pad.top + plotH - ((v - minV) / (maxV - minV)) * plotH;
+    const lastIdx = points.length - 1;
+    const hasInProgress = inProgressIndex === lastIdx && lastIdx > 0;
 
-    const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(i).toFixed(1)} ${yScale(p.value).toFixed(1)}`).join(" ");
     let svg = `<svg viewBox="0 0 ${width} ${height}" style="width:100%;height:${height}px;">`;
     svg += drawYAxis(pad, width, yScale, ticks, format);
-    svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
+
+    const solidEnd = hasInProgress ? lastIdx - 1 : lastIdx;
+    const solidPathD = points.slice(0, solidEnd + 1)
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(i).toFixed(1)} ${yScale(p.value).toFixed(1)}`).join(" ");
+    svg += `<path d="${solidPathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
+    if (hasInProgress) {
+      svg += `<path d="M ${xScale(lastIdx - 1).toFixed(1)} ${yScale(points[lastIdx - 1].value).toFixed(1)} `
+        + `L ${xScale(lastIdx).toFixed(1)} ${yScale(points[lastIdx].value).toFixed(1)}" fill="none" stroke="${color}" `
+        + `stroke-width="2.5" stroke-linecap="round" stroke-dasharray="5 4" opacity="0.6" />`;
+    }
     points.forEach((p, i) => {
-      const tip = chartTipAttrs(`${p.label}: ${format(p.value)}`);
+      const inProgress = hasInProgress && i === lastIdx;
+      const tip = chartTipAttrs(`${p.label}${inProgress ? " (in progress)" : ""}: ${format(p.value)}`);
       const click = p.startDate ? chartClickAttrs(p.startDate, p.endDate) : "";
       svg += `<circle class="chart-hit" cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="10" fill="transparent" ${tip} ${click} />`;
-      svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="3.5" fill="${color}" style="pointer-events:none" />`;
+      const fill = inProgress ? "var(--panel)" : color;
+      const stroke = inProgress ? `stroke="${color}" stroke-width="2"` : "";
+      svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="${inProgress ? 4 : 3.5}" fill="${fill}" ${stroke} style="pointer-events:none" />`;
     });
     points.forEach((p, i) => {
       svg += `<text x="${xScale(i).toFixed(1)}" y="${height - 6}" font-size="10" fill="var(--muted)" text-anchor="middle">${p.label}</text>`;
@@ -850,7 +1115,7 @@
     container.innerHTML = svg + "</svg>";
   }
 
-  function renderBarChart(containerId, bars, { format }) {
+  function renderBarChart(containerId, bars, { format, inProgressIndex = null }) {
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 200);
     const height = 150;
@@ -872,15 +1137,19 @@
       const top = Math.min(y, zeroY);
       const h = Math.max(Math.abs(y - zeroY), 1);
       const color = b.value >= 0 ? "var(--success)" : "var(--error)";
-      const tip = chartTipAttrs(`${b.label}: ${format(b.value)}`);
+      const inProgress = inProgressIndex === i;
+      const fillAttrs = inProgress
+        ? `fill="${color}" fill-opacity="0.4" stroke="${color}" stroke-width="1.5" stroke-dasharray="3 2"`
+        : `fill="${color}"`;
+      const tip = chartTipAttrs(`${b.label}${inProgress ? " (in progress)" : ""}: ${format(b.value)}`);
       const click = b.startDate ? chartClickAttrs(b.startDate, b.endDate) : "";
-      svg += `<rect class="chart-hit" x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" rx="2" ${tip} ${click} />`;
+      svg += `<rect class="chart-hit" x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" ${fillAttrs} rx="2" ${tip} ${click} />`;
       svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${height - 6}" font-size="10" fill="var(--muted)" text-anchor="middle">${b.label}</text>`;
     });
     container.innerHTML = svg + "</svg>";
   }
 
-  function renderMultiLineChart(containerId, seriesList, { format }) {
+  function renderMultiLineChart(containerId, seriesList, { format, inProgressIndex = null }) {
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 200);
     const height = 170;
@@ -893,26 +1162,40 @@
     const xStep = numPoints > 1 ? plotW / (numPoints - 1) : 0;
     const xScale = (i) => pad.left + i * xStep;
     const yScale = (v) => pad.top + plotH - ((v - minV) / (maxV - minV)) * plotH;
+    const lastIdx = numPoints - 1;
 
     let svg = `<svg viewBox="0 0 ${width} ${height}" style="width:100%;height:${height}px;">`;
     svg += drawYAxis(pad, width, yScale, ticks, format);
     seriesList.forEach((series) => {
       // Missing months (e.g. Wholesale with $0 net sales -> contribution_pct is None) break
       // the line into segments rather than interpolating across a gap that isn't real data.
+      // The in-progress month (if it has real data) gets its own dashed final segment too.
+      const hasInProgress = inProgressIndex === lastIdx && lastIdx > 0
+        && series.points[lastIdx].value !== null && series.points[lastIdx].value !== undefined
+        && series.points[lastIdx - 1].value !== null && series.points[lastIdx - 1].value !== undefined;
+      const solidEnd = hasInProgress ? lastIdx - 1 : lastIdx;
       let pathD = "";
       let drawing = false;
-      series.points.forEach((p, i) => {
+      series.points.slice(0, solidEnd + 1).forEach((p, i) => {
         if (p.value === null || p.value === undefined) { drawing = false; return; }
         pathD += `${drawing ? "L" : "M"} ${xScale(i).toFixed(1)} ${yScale(p.value).toFixed(1)} `;
         drawing = true;
       });
       svg += `<path d="${pathD}" fill="none" stroke="${series.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`;
+      if (hasInProgress) {
+        svg += `<path d="M ${xScale(lastIdx - 1).toFixed(1)} ${yScale(series.points[lastIdx - 1].value).toFixed(1)} `
+          + `L ${xScale(lastIdx).toFixed(1)} ${yScale(series.points[lastIdx].value).toFixed(1)}" fill="none" stroke="${series.color}" `
+          + `stroke-width="2" stroke-linecap="round" stroke-dasharray="4 3" opacity="0.6" />`;
+      }
       series.points.forEach((p, i) => {
         if (p.value === null || p.value === undefined) return;
-        const tip = chartTipAttrs(`${series.name} — ${p.label}: ${format(p.value)}`);
+        const inProgress = hasInProgress && i === lastIdx;
+        const tip = chartTipAttrs(`${series.name} — ${p.label}${inProgress ? " (in progress)" : ""}: ${format(p.value)}`);
         const click = p.startDate ? chartClickAttrs(p.startDate, p.endDate) : "";
         svg += `<circle class="chart-hit" cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="9" fill="transparent" ${tip} ${click} />`;
-        svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="3" fill="${series.color}" style="pointer-events:none" />`;
+        const fill = inProgress ? "var(--panel)" : series.color;
+        const stroke = inProgress ? `stroke="${series.color}" stroke-width="1.5"` : "";
+        svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="${inProgress ? 3.5 : 3}" fill="${fill}" ${stroke} style="pointer-events:none" />`;
       });
     });
     seriesList[0].points.forEach((p, i) => {
@@ -923,16 +1206,19 @@
 
   function renderTrends(periods) {
     const labels = periods.map((p) => fmtMonthLabel(p.start_date));
+    // get_monthly_trend always makes the last period the current calendar month, ending today
+    // rather than month-end - so it's always "in progress," never a genuinely completed month.
+    const lastIdx = periods.length - 1;
 
     const netSalesPoints = periods.map((p, i) => ({
       label: labels[i], value: p.company.net_sales, startDate: p.start_date, endDate: p.end_date,
     }));
-    renderLineChart("chart-net-sales", netSalesPoints, { color: "var(--accent)", format: fmtCurrency });
+    renderLineChart("chart-net-sales", netSalesPoints, { color: "var(--accent)", format: fmtCurrency, inProgressIndex: lastIdx });
 
     const netIncomePoints = periods.map((p, i) => ({
       label: labels[i], value: p.company.net_income, startDate: p.start_date, endDate: p.end_date,
     }));
-    renderLineChart("chart-net-income", netIncomePoints, { color: "var(--accent-dark)", format: fmtCurrency });
+    renderLineChart("chart-net-income", netIncomePoints, { color: "var(--accent-dark)", format: fmtCurrency, inProgressIndex: lastIdx });
 
     const momBars = periods
       .map((p, i) => {
@@ -942,7 +1228,7 @@
         return { label: labels[i], value: change, startDate: p.start_date, endDate: p.end_date };
       })
       .filter((b) => b !== null);
-    renderBarChart("chart-mom-change", momBars, { format: (v) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%" });
+    renderBarChart("chart-mom-change", momBars, { format: (v) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%", inProgressIndex: momBars.length - 1 });
 
     const channelSeries = CHANNELS.map((ch) => ({
       name: ch,
@@ -955,7 +1241,7 @@
         };
       }),
     }));
-    renderMultiLineChart("chart-contribution-by-channel", channelSeries, { format: (v) => v.toFixed(1) + "%" });
+    renderMultiLineChart("chart-contribution-by-channel", channelSeries, { format: (v) => v.toFixed(1) + "%", inProgressIndex: lastIdx });
 
     document.getElementById("chart-legend").innerHTML = CHANNELS.map(
       (ch) => `<span class="chart-legend-item"><span class="chart-legend-swatch" style="background:${CHANNEL_COLORS[ch]}"></span>${ch}</span>`
