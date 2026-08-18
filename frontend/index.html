@@ -131,6 +131,19 @@
   #dashboard-status.error { color: var(--error); }
   #freshness-bar { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
 
+  /* ---- Tabs ---- */
+  #tab-nav {
+    display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+  }
+  .tab-btn {
+    padding: 10px 16px; border: none; background: none; cursor: pointer;
+    font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--muted);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel .card:first-child { margin-top: 0; }
+
   #insight-strip {
     display: none; /* shown via JS only when there's something worth saying */
     gap: 16px;
@@ -202,16 +215,18 @@
   .delta.up { color: var(--success); }
   .delta.down { color: var(--error); }
   .delta.flat { color: var(--muted); }
+  .run-rate-note { font-size: 11.5px; font-weight: 500; color: var(--muted); margin-top: 4px; }
   .positive { color: var(--success); }
   .negative { color: var(--error); }
 
   /* grid-template-columns is set inline by JS per render, since it depends on how many
      channels get "full" vs "secondary" treatment this period (see renderChannelGrid). */
-  #channel-grid {
+  #channel-grid-summary, #channel-grid-full {
     display: grid;
     gap: 16px;
     align-items: start;
   }
+  #channel-grid-summary { margin-bottom: 20px; }
   .channel-secondary-col { display: flex; flex-direction: column; gap: 16px; }
   .channel-card h3 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
   .channel-card.muted { opacity: 0.92; }
@@ -485,6 +500,8 @@
   /* ---- Mobile: chat panel becomes a full-screen overlay instead of a side column ---- */
   @media (max-width: 768px) {
     #sku-section-row { grid-template-columns: 1fr; }
+    #tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab-btn { flex-shrink: 0; padding: 10px 12px; font-size: 13px; }
     #chat-panel:not(.hidden) {
       position: fixed;
       inset: 0;
@@ -499,7 +516,7 @@
     #chat-toggle-btn span.label { display: none; }
     /* Full/secondary asymmetric columns (set inline by JS) don't fit a narrow screen -
        force everything to a single stacked column regardless of what JS computed. */
-    #channel-grid { grid-template-columns: 1fr !important; }
+    #channel-grid-summary, #channel-grid-full { grid-template-columns: 1fr !important; }
   }
 </style>
 </head>
@@ -544,65 +561,94 @@
           </div>
         </div>
         <div id="freshness-bar"></div>
-        <div id="insight-strip">
-          <div class="insight-icon">💡</div>
-          <div class="insight-body">
-            <b>What's driving this period</b>
-            <ul id="insight-list"></ul>
-          </div>
-        </div>
-        <div id="company-card" class="card"></div>
-        <div id="channel-grid"></div>
-        <div id="dashboard-caveat"></div>
-        <div id="trends-section">
-          <h2>Trends</h2>
-          <div id="trends-status">Loading trends...</div>
-          <div id="trends-grid" style="display:none">
-            <div class="card chart-card">
-              <h3>Net Sales</h3>
-              <div id="chart-net-sales"></div>
-            </div>
-            <div class="card chart-card">
-              <h3>Net Income</h3>
-              <div id="chart-net-income"></div>
-            </div>
-            <div class="card chart-card">
-              <h3>Month-over-Month Net Sales Change</h3>
-              <div id="chart-mom-change"></div>
-            </div>
-            <div class="card chart-card">
-              <h3>Contribution Margin % by Channel</h3>
-              <div id="chart-contribution-by-channel"></div>
-              <div id="chart-legend" class="chart-legend"></div>
-            </div>
-          </div>
+
+        <div id="tab-nav">
+          <button class="tab-btn active" id="tab-btn-overview" data-tab="overview">Overview</button>
+          <button class="tab-btn" id="tab-btn-channels" data-tab="channels">Channels</button>
+          <button class="tab-btn" id="tab-btn-products" data-tab="products">Products &amp; Inventory</button>
+          <button class="tab-btn" id="tab-btn-cash" data-tab="cash">Cash &amp; Runway</button>
         </div>
 
-        <div id="sku-section-group">
-          <h2 id="sku-section-heading">SKU Performance</h2>
-          <div id="sku-section-row">
-            <div id="sku-revenue-section" class="card sku-perf-card">
-              <div class="card-header-row">
-                <h3>SKU Revenue <span class="beta-tag">Beta</span></h3>
-                <button id="sku-revenue-refresh-btn">Refresh SKU Data</button>
+        <div id="tab-overview" class="tab-panel">
+          <div id="insight-strip">
+            <div class="insight-icon">💡</div>
+            <div class="insight-body">
+              <b>What's driving this period</b>
+              <ul id="insight-list"></ul>
+            </div>
+          </div>
+          <div id="company-card" class="card"></div>
+          <div id="channel-grid-summary"></div>
+          <div id="trends-section-overview">
+            <h2>Trends</h2>
+            <div id="trends-status-overview">Loading trends...</div>
+            <div id="trends-grid-overview" style="display:none">
+              <div class="card chart-card">
+                <h3>Net Sales</h3>
+                <div id="chart-net-sales"></div>
               </div>
-              <p class="sku-revenue-note" id="sku-revenue-note">DTC only, may lag a few days behind Shopify — how this works</p>
-              <div id="sku-revenue-status"></div>
-              <div id="sku-revenue-results"></div>
+              <div class="card chart-card">
+                <h3>Net Income</h3>
+                <div id="chart-net-income"></div>
+              </div>
+              <div class="card chart-card">
+                <h3>Month-over-Month Net Sales Change</h3>
+                <div id="chart-mom-change"></div>
+              </div>
             </div>
+          </div>
+        </div>
 
-            <div id="sku-units-section" class="card sku-perf-card">
-              <div class="card-header-row">
-                <h3>SKU Units <span class="beta-tag">Beta</span></h3>
-                <div class="sku-units-btn-group">
-                  <button id="sku-units-to-date-btn">Since Inception</button>
-                  <button id="sku-units-period-btn">For Selected Period</button>
+        <div id="tab-channels" class="tab-panel" style="display:none">
+          <div id="channel-grid-full"></div>
+          <div id="dashboard-caveat"></div>
+          <div id="trends-section-channels">
+            <h2>Trends</h2>
+            <div id="trends-status-channels">Loading trends...</div>
+            <div id="trends-grid-channels" style="display:none">
+              <div class="card chart-card">
+                <h3>Contribution Margin % by Channel</h3>
+                <div id="chart-contribution-by-channel"></div>
+                <div id="chart-legend" class="chart-legend"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-products" class="tab-panel" style="display:none">
+          <div id="sku-section-group">
+            <h2 id="sku-section-heading">SKU Performance</h2>
+            <div id="sku-section-row">
+              <div id="sku-revenue-section" class="card sku-perf-card">
+                <div class="card-header-row">
+                  <h3>SKU Revenue <span class="beta-tag">Beta</span></h3>
+                  <button id="sku-revenue-refresh-btn">Refresh SKU Data</button>
                 </div>
+                <p class="sku-revenue-note" id="sku-revenue-note">DTC only, may lag a few days behind Shopify — how this works</p>
+                <div id="sku-revenue-status"></div>
+                <div id="sku-revenue-results"></div>
               </div>
-              <p class="sku-revenue-note" id="sku-units-note">Since-inception total, or pull any period — how this works</p>
-              <div id="sku-units-status"></div>
-              <div id="sku-units-results"></div>
+
+              <div id="sku-units-section" class="card sku-perf-card">
+                <div class="card-header-row">
+                  <h3>SKU Units <span class="beta-tag">Beta</span></h3>
+                  <div class="sku-units-btn-group">
+                    <button id="sku-units-to-date-btn">Since Inception</button>
+                    <button id="sku-units-period-btn">For Selected Period</button>
+                  </div>
+                </div>
+                <p class="sku-revenue-note" id="sku-units-note">Since-inception total, or pull any period — how this works</p>
+                <div id="sku-units-status"></div>
+                <div id="sku-units-results"></div>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <div id="tab-cash" class="tab-panel" style="display:none">
+          <div id="cash-placeholder" class="card">
+            <h2>Cash &amp; Runway</h2>
+            <p class="sku-revenue-note">Under construction — combined cash balance, cash-basis burn rate and runway, known obligations, and a 90-day forecast are coming here next.</p>
           </div>
         </div>
       </div>
@@ -679,6 +725,7 @@
       localStorage.removeItem(TOKEN_KEY);
       window.location.reload();
     });
+    initTabs();
     initRangeControls();
     loadDashboard();
     loadTrends(); // independent of the date-range dashboard above - always the trailing 6 months
@@ -706,6 +753,31 @@
   }
 
   let currentRange = computeRange("mtd");
+
+  // ---- Tabs ----
+  const TABS = ["overview", "channels", "products", "cash"];
+  let currentTab = "overview";
+
+  function switchTab(name) {
+    currentTab = name;
+    TABS.forEach((t) => {
+      document.getElementById(`tab-${t}`).style.display = t === name ? "block" : "none";
+      document.getElementById(`tab-btn-${t}`).classList.toggle("active", t === name);
+    });
+    // Charts inside a hidden (display:none) tab measure 0 width when drawn, so the Channels
+    // tab's chart only renders the first time you actually visit it, using whatever trend data
+    // has already loaded by then - re-rendering on every visit is cheap (6 months of data) and
+    // avoids tracking "is this already up to date" separately from loadTrends' own fetch.
+    if (name === "channels" && lastTrendsPeriods) {
+      renderTrendsChannels(lastTrendsPeriods);
+    }
+  }
+
+  function initTabs() {
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+  }
 
   function initRangeControls() {
     const rangePreset = document.getElementById("range-preset");
@@ -791,13 +863,20 @@
   }
   // Short "Jul 1–17" style label for a date range, used in period-over-period delta text.
   function fmtShortRange(startIso, endIso) {
+    // Always includes the year - without it, a Year-to-Date comparison ("vs Jan 1 - Aug 18")
+    // reads as if it's comparing the period to itself instead of the same span a year earlier.
     const s = new Date(startIso + "T00:00:00Z");
     const e = new Date(endIso + "T00:00:00Z");
     const opts = { month: "short", timeZone: "UTC" };
     const sMonth = s.toLocaleDateString("en-US", opts);
     const eMonth = e.toLocaleDateString("en-US", opts);
-    if (sMonth === eMonth) return `${sMonth} ${s.getUTCDate()}–${e.getUTCDate()}`;
-    return `${sMonth} ${s.getUTCDate()} – ${eMonth} ${e.getUTCDate()}`;
+    const sYear = s.getUTCFullYear();
+    const eYear = e.getUTCFullYear();
+    if (sYear !== eYear) {
+      return `${sMonth} ${s.getUTCDate()}, ${sYear} – ${eMonth} ${e.getUTCDate()}, ${eYear}`;
+    }
+    if (sMonth === eMonth) return `${sMonth} ${s.getUTCDate()}–${e.getUTCDate()}, ${eYear}`;
+    return `${sMonth} ${s.getUTCDate()} – ${eMonth} ${e.getUTCDate()}, ${eYear}`;
   }
 
   // ---- Period-over-period deltas ----
@@ -965,6 +1044,27 @@
     `;
     return card;
   }
+  function buildSummaryChannelCard(ch, m, priorPeriod, rangeLabel) {
+    // Overview should answer "are we okay" at a glance - just contribution/margin (the
+    // bottom-line-relevant number) and net sales, not the full 9-item metric-row. Full detail
+    // (orders, discount rate, ROAS, ad spend, etc.) lives on the Channels tab.
+    const contribClass = m.contribution >= 0 ? "positive" : "negative";
+    const priorContribution = priorPeriod && priorPeriod.channels[ch] ? priorPeriod.channels[ch].contribution : null;
+    const deltaHtml = priorPeriod ? renderContributionDelta(m.contribution, priorContribution, rangeLabel) : "";
+    const card = document.createElement("div");
+    card.className = "card channel-card";
+    card.innerHTML = `
+      <h3>${ch}</h3>
+      <div class="revenue-share">${fmtPercent(m.revenue_share)} of total revenue</div>
+      <div class="primary-stat ${contribClass}">${fmtSignedCurrency(m.contribution)}</div>
+      <div class="primary-stat-label">Contribution before overhead (${fmtPercent(m.contribution_pct)} margin)${infoIcon("contribution")}</div>
+      ${deltaHtml}
+      <div class="metric-row">
+        <div><span class="metric-label">Net Sales</span><span>${fmtCurrency(m.net_sales)}</span></div>
+      </div>
+    `;
+    return card;
+  }
   function buildMutedChannelCard(ch, m) {
     const card = document.createElement("div");
     card.className = "card channel-card muted";
@@ -974,7 +1074,7 @@
       <div class="revenue-share">${fmtPercent(m.revenue_share)} of revenue</div>
       <div class="primary-stat" style="font-size:19px;color:var(--slate)">${fmtCurrency(m.net_sales)} <span style="font-size:11.5px;font-weight:500;color:var(--muted)">net sales</span></div>
       <div class="primary-stat-label">${fmtNumber(m.orders)} orders</div>
-      <div class="muted-note">Limited real volume or known-incomplete data this period — see the note below for details.</div>
+      <div class="muted-note">Limited real volume or known-incomplete data this period — see the Channels tab for details.</div>
     `;
     return card;
   }
@@ -987,8 +1087,8 @@
     card.innerHTML = `<h3>${ch}</h3><p>${note}</p>`;
     return card;
   }
-  function renderChannelGrid(data) {
-    const grid = document.getElementById("channel-grid");
+  function renderChannelGrid(data, gridId, buildCard) {
+    const grid = document.getElementById(gridId);
     grid.innerHTML = "";
 
     const entries = CHANNELS.map((ch) => ({ ch, m: data.channels[ch] })).filter((e) => e.m);
@@ -1005,7 +1105,7 @@
       // asymmetric "wide cards + narrow sidebar" layout only makes sense with an actual mix.
       grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(240px, 1fr))";
       entries.forEach(({ ch, m, tier }) => {
-        if (tier === "full") grid.appendChild(buildFullChannelCard(ch, m, priorPeriod, rangeLabel));
+        if (tier === "full") grid.appendChild(buildCard(ch, m, priorPeriod, rangeLabel));
         else if (tier === "empty") grid.appendChild(buildEmptyChannelCard(ch));
         else grid.appendChild(buildMutedChannelCard(ch, m));
       });
@@ -1013,7 +1113,7 @@
     }
 
     grid.style.gridTemplateColumns = `repeat(${full.length}, 1.3fr) 0.85fr`;
-    full.forEach(({ ch, m }) => grid.appendChild(buildFullChannelCard(ch, m, priorPeriod, rangeLabel)));
+    full.forEach(({ ch, m }) => grid.appendChild(buildCard(ch, m, priorPeriod, rangeLabel)));
     const col = document.createElement("div");
     col.className = "channel-secondary-col";
     secondary.forEach(({ ch, m, tier }) => {
@@ -1040,10 +1140,23 @@
     const rangeLabel = pp ? fmtShortRange(pp.start_date, pp.end_date) : "";
     const contribDelta = pp ? renderContributionDelta(c.contribution, pp.company.contribution, rangeLabel) : "";
     const netIncomeDelta = pp ? renderContributionDelta(c.net_income, pp.company.net_income, rangeLabel) : "";
+
+    // Annualized from days-elapsed-in-period (same basis the chat assistant already uses when
+    // asked to estimate/project) - a quick "if this pace held all year" reference, not a
+    // forecast. Shown for any range length; the "at this pace" framing stays honest even for an
+    // already-closed period like "Last Month."
+    const startD = new Date(data.start_date + "T00:00:00");
+    const endD = new Date(data.end_date + "T00:00:00");
+    const daysElapsed = Math.round((endD - startD) / 86400000) + 1;
+    const runRate = daysElapsed > 0 ? (c.net_sales / daysElapsed) * 365 : null;
+    const runRateHtml = runRate !== null
+      ? `<div class="run-rate-note">At this pace, ~${fmtCurrency(runRate)}/yr</div>`
+      : "";
+
     document.getElementById("company-card").innerHTML = `
       <h2>Company Overview</h2>
       <div id="company-stats">
-        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}</div>
+        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}${runRateHtml}</div>
         <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}</div>
         <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(c.net_income)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}</div>
       </div>
@@ -1054,15 +1167,14 @@
         <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(c.orders)}</span></div>
         <div><span class="metric-label">AOV</span><span>${fmtCurrency(c.aov)}</span></div>
         <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(c.units)}</span></div>
-        <div><span class="metric-label">Discount Rate${infoIcon("discountRate")}</span><span>${fmtPercent(c.discount_rate)}</span></div>
-        <div><span class="metric-label">Refund Rate${infoIcon("refundRate")}</span><span>${fmtPercent(c.refund_rate)}</span></div>
-        <div><span class="metric-label">ROAS${infoIcon("roas")}</span><span>${c.roas !== null && c.roas !== undefined ? c.roas.toFixed(1) + "x" : "—"}</span></div>
-        <div><span class="metric-label">Ad Spend${infoIcon("ads")}</span><span>${fmtCurrency(c.ads)}</span></div>
-        <div><span class="metric-label">Other Marketing${infoIcon("otherMarketing")}</span><span>${fmtCurrency(c.other_marketing)}</span></div>
       </div>
     `;
 
-    renderChannelGrid(data);
+    // Overview gets a trimmed, glance-friendly channel card (contribution + net sales only);
+    // the Channels tab gets the full 9-metric card, including the Ad Spend/ROAS/Discount/Refund
+    // detail that used to live here.
+    renderChannelGrid(data, "channel-grid-summary", buildSummaryChannelCard);
+    renderChannelGrid(data, "channel-grid-full", buildFullChannelCard);
 
     document.getElementById("dashboard-caveat").innerHTML = data.caveat
       ? `Amazon and Wholesale unit/order counts are known-incomplete — treat them as directional, not precise.${infoIcon("limitedData")}`
@@ -1337,7 +1449,7 @@
     container.innerHTML = svg + "</svg>";
   }
 
-  function renderTrends(periods) {
+  function renderTrendsOverview(periods) {
     const labels = periods.map((p) => fmtMonthLabel(p.start_date));
     // get_monthly_trend always makes the last period the current calendar month, ending today
     // rather than month-end - so it's always "in progress," never a genuinely completed month.
@@ -1362,6 +1474,11 @@
       })
       .filter((b) => b !== null);
     renderBarChart("chart-mom-change", momBars, { format: (v) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%", inProgressIndex: momBars.length - 1 });
+  }
+
+  function renderTrendsChannels(periods) {
+    const labels = periods.map((p) => fmtMonthLabel(p.start_date));
+    const lastIdx = periods.length - 1;
 
     const channelSeries = CHANNELS.map((ch) => ({
       name: ch,
@@ -1381,9 +1498,14 @@
     ).join("");
   }
 
+  let lastTrendsPeriods = null;  // so switchTab can lazily render the Channels tab's chart the
+  // first time it's visited, using whatever data has already loaded - see switchTab's comment.
+
   async function loadTrends() {
-    const trendsStatus = document.getElementById("trends-status");
-    const trendsGrid = document.getElementById("trends-grid");
+    const trendsStatusOverview = document.getElementById("trends-status-overview");
+    const trendsGridOverview = document.getElementById("trends-grid-overview");
+    const trendsStatusChannels = document.getElementById("trends-status-channels");
+    const trendsGridChannels = document.getElementById("trends-grid-channels");
     const token = localStorage.getItem(TOKEN_KEY);
     try {
       const res = await fetch(`${API_BASE}/trends?months=6`, {
@@ -1391,16 +1513,27 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        trendsStatus.textContent = data.detail || "Couldn't load trends.";
-        trendsStatus.className = "error";
+        trendsStatusOverview.textContent = data.detail || "Couldn't load trends.";
+        trendsStatusOverview.className = "error";
+        trendsStatusChannels.textContent = data.detail || "Couldn't load trends.";
+        trendsStatusChannels.className = "error";
         return;
       }
-      trendsStatus.style.display = "none";
-      trendsGrid.style.display = "grid"; // must be visible before render*Chart() measures width
-      renderTrends(data.periods);
+      lastTrendsPeriods = data.periods;
+      trendsStatusOverview.style.display = "none";
+      trendsGridOverview.style.display = "grid"; // must be visible before render*Chart() measures width
+      renderTrendsOverview(data.periods);
+
+      trendsStatusChannels.style.display = "none";
+      trendsGridChannels.style.display = "grid";
+      if (currentTab === "channels") renderTrendsChannels(data.periods);
+      // else: rendered lazily by switchTab the first time the Channels tab is visited, since a
+      // chart drawn while its tab is hidden would measure 0 width.
     } catch (e) {
-      trendsStatus.textContent = "Couldn't reach the server — check your connection and try again.";
-      trendsStatus.className = "error";
+      trendsStatusOverview.textContent = "Couldn't reach the server — check your connection and try again.";
+      trendsStatusOverview.className = "error";
+      trendsStatusChannels.textContent = "Couldn't reach the server — check your connection and try again.";
+      trendsStatusChannels.className = "error";
     }
   }
 
