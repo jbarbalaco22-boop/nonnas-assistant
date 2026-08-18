@@ -37,6 +37,9 @@ def test_live_tools_require_date_range():
     units_schema = next(t for t in TOOL_SCHEMAS if t["name"] == "get_channel_units_live")
     assert set(units_schema["input_schema"]["required"]) == {"start_date", "end_date"}
 
+    sku_units_schema = next(t for t in TOOL_SCHEMAS if t["name"] == "get_sku_units_live")
+    assert set(sku_units_schema["input_schema"]["required"]) == {"start_date", "end_date"}
+
 
 def test_channel_enum_matches_the_four_real_channels():
     financials_schema = next(t for t in TOOL_SCHEMAS if t["name"] == "get_channel_financials_live")

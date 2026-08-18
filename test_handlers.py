@@ -158,3 +158,39 @@ def test_dashboard_skips_prior_period_when_disabled(monkeypatch):
 
     result = handlers.get_dashboard_data(None, None, "2026-08-01", "2026-08-17", include_prior_period=False)
     assert "prior_period" not in result
+
+
+def test_sku_units_live_buckets_by_sku_then_channel(monkeypatch):
+    orders = [
+        {
+            "sourceName": "web",  # -> DTC
+            "lineItems": {"nodes": [
+                {"sku": "OO-OO-ORG-500", "quantity": 3},
+                {"sku": "OO-OO-COOK-750ML-SHIP", "quantity": 1},
+            ]},
+        },
+        {
+            "sourceName": "tiktok",  # -> TikTok
+            "lineItems": {"nodes": [{"sku": "OO-OO-ORG-500", "quantity": 5}]},
+        },
+        {
+            "sourceName": "shopify_draft_order",  # excluded entirely
+            "lineItems": {"nodes": [{"sku": "OO-OO-ORG-500", "quantity": 99}]},
+        },
+        {
+            "sourceName": "web",
+            "lineItems": {"nodes": [{"sku": None, "quantity": 2}]},  # missing SKU
+        },
+    ]
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders", lambda domain, token, start, end: orders)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_sku_units_live(fake_shopify, "2026-08-01", "2026-08-17")
+
+    assert result["skus"]["OO-OO-ORG-500"]["name"] == "Nonna's Olive Oil (500mL Original)"
+    assert result["skus"]["OO-OO-ORG-500"]["channels"]["DTC"] == 3
+    assert result["skus"]["OO-OO-ORG-500"]["channels"]["TikTok"] == 5
+    assert result["skus"]["OO-OO-COOK-750ML-SHIP"]["channels"]["DTC"] == 1
+    assert result["skus"]["(no SKU)"]["name"] is None  # not in the registry
+    assert result["skus"]["(no SKU)"]["channels"]["DTC"] == 2
+    assert len(result["skus"]) == 3  # draft order's SKU never appears

@@ -74,6 +74,28 @@ TOOL_SCHEMAS = [
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "get_sku_units_live",
+        "description": (
+            "Live pull of units sold per SKU, broken out by channel, for a specific date "
+            "range, straight from Shopify. As of 2026-08-18 there's effectively one active SKU "
+            "(OO-OO-ORG-500) with new ones launching soon — use this when asked about a "
+            "specific SKU/product by name or code, or which SKU is selling where. This is "
+            "UNITS ONLY, not revenue or COGS — no tool here can give per-SKU revenue or margin "
+            "yet (Shopify's line-item data doesn't carry price, and QuickBooks has no "
+            "per-Item detail on transactions yet either). Say so plainly if asked for per-SKU "
+            "revenue or margin rather than approximating it. Use nonnas_shared's SKU registry "
+            "naming (ask if a raw SKU code needs translating to a product name) when answering."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "YYYY-MM-DD, inclusive"},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD, inclusive"},
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
 ]
 
 
@@ -90,4 +112,8 @@ def dispatch(tool_name: str, tool_input: dict, qbo_context, shopify_context) -> 
         )
     if tool_name == "get_unit_reference":
         return handlers.get_unit_reference()
+    if tool_name == "get_sku_units_live":
+        return handlers.get_sku_units_live(
+            shopify_context, tool_input["start_date"], tool_input["end_date"]
+        )
     raise ValueError(f"Unknown tool: {tool_name}")

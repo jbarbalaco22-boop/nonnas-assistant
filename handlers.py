@@ -8,7 +8,7 @@ import json
 import os
 from datetime import date, datetime, timezone
 
-from nonnas_shared.config import load_channel_units_by_month
+from nonnas_shared.config import load_channel_units_by_month, load_sku_map
 from nonnas_shared.connectors import channel_financials
 from nonnas_shared.connectors import qbo_client as shared_qbo
 from nonnas_shared.connectors import shopify_client as shared_shopify
@@ -132,6 +132,50 @@ def get_channel_units_live(shopify: ShopifyContext, start_date: str, end_date: s
         "pulled_at": datetime.now(timezone.utc).isoformat(),
         "channels": buckets,
         "caveat": UNITS_CAVEAT,
+    }
+
+
+def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) -> dict:
+    """Live pull: units sold per SKU, further broken out by channel, for an arbitrary date
+    range - built ahead of the multi-SKU rollout (2026-08-18), for when "units by channel"
+    alone stops being enough to know what's actually selling.
+
+    Keyed by SKU code, each with its registered display name (via nonnas_shared.config's
+    load_sku_map - None if not registered there, e.g. a brand-new SKU or a data-entry typo -
+    still shows up under its raw Shopify SKU string rather than being silently dropped) and a
+    per-channel unit breakdown: {"OO-OO-ORG-500": {"name": "...", "channels": {"DTC": 40, ...}}}.
+
+    Units only, not revenue - Shopify's lineItems query (shopify_client.fetch_orders) currently
+    fetches only sku/quantity per line, not price. Order-level discount/refund totals aren't
+    allocated down to individual line items either (that needs an allocation method - e.g.
+    proportional to line price - that hasn't been designed or verified yet). Use
+    get_channel_units_live for the real, complete revenue figures; this is units-only until
+    that's built out.
+    """
+    orders = shared_shopify.fetch_orders(
+        shopify.domain, shopify.access_token,
+        date.fromisoformat(start_date), date.fromisoformat(end_date),
+    )
+    sku_registry = load_sku_map()
+    buckets: dict = {}
+    for order in orders:
+        channel = classify_source(order.get("sourceName"))
+        if channel is None:
+            continue
+        for node in order.get("lineItems", {}).get("nodes", []):
+            sku = node.get("sku") or "(no SKU)"
+            qty = node.get("quantity", 0)
+            entry = buckets.setdefault(sku, {
+                "name": sku_registry.get(sku, {}).get("name"),  # None if not in the registry
+                "channels": {ch: 0 for ch in CHANNELS},
+            })
+            entry["channels"][channel] = entry["channels"].get(channel, 0) + qty
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "pulled_at": datetime.now(timezone.utc).isoformat(),
+        "skus": buckets,
     }
 
 
