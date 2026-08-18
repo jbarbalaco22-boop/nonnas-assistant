@@ -304,6 +304,7 @@
   .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--muted); }
   .chart-legend-item { display: flex; align-items: center; gap: 5px; }
   .chart-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+  #chart-note-discount { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
 
   /* ---- SKU Performance (Revenue + Units, paired side by side with matching headers) ---- */
   #sku-section-group { margin-top: 20px; }
@@ -695,6 +696,7 @@
                 <h3>Discount Rate % by Channel</h3>
                 <div id="chart-discount-rate-by-channel"></div>
                 <div id="chart-legend-discount" class="chart-legend"></div>
+                <div id="chart-note-discount"></div>
               </div>
               <div class="card chart-card">
                 <h3>ROAS by Channel</h3>
@@ -1339,12 +1341,19 @@
       ? `<div class="run-rate-note">At this pace, ~${fmtCurrency(runRate)}/yr</div>`
       : "";
 
+    // Displayed as (rounded Contribution) - (rounded Overhead), not a fresh independent round
+    // of the raw net_income float - both equal the same true value before rounding, but
+    // rounding each of the three numbers on this card separately can land Net Income $1 off
+    // from what Contribution minus Overhead visibly shows (real audit finding, 2026-08-18).
+    // Everything else (sign/class, delta vs. prior period) still uses the true c.net_income.
+    const netIncomeDisplay = Math.round(c.contribution) - Math.round(c.overhead);
+
     document.getElementById("company-card").innerHTML = `
       <h2>Company Overview</h2>
       <div id="company-stats">
         <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}${runRateHtml}</div>
         <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}</div>
-        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(c.net_income)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}</div>
+        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(netIncomeDisplay)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}</div>
       </div>
       <div id="contribution-note">Contribution excludes overhead — Net Income above is the real bottom line.</div>
       <div class="metric-row">
@@ -1718,6 +1727,17 @@
     const discountSeries = buildChannelSeries(periods, labels, "discount_rate", 100);
     renderMultiLineChart("chart-discount-rate-by-channel", discountSeries, { format: (v) => v.toFixed(1) + "%", inProgressIndex: lastIdx });
     renderChartLegend("chart-legend-discount");
+    // Discount Rate (unlike ROAS, which is QBO-only) depends on Shopify's own order-level API,
+    // which can't retrieve orders older than ~55 days - so early months in this 6-month window
+    // can legitimately have no discount rate for any channel, even though Net Sales for that
+    // same month is fully populated (from QBO, not Shopify). Real gap, not a bug - confirmed
+    // live 2026-08-18: orders=0 for every channel in Mar-May 2026 while net_sales was real.
+    const missingDiscountMonths = periods.filter((p) => CHANNELS.every((ch) => p.channels[ch].discount_rate === null || p.channels[ch].discount_rate === undefined));
+    document.getElementById("chart-note-discount").textContent = missingDiscountMonths.length > 0
+      ? `No discount rate for ${missingDiscountMonths.map((p) => fmtMonthLabel(p.start_date)).join(", ")} - `
+        + `Shopify's order-level API can't retrieve orders that far back (~55 days), even though `
+        + `Net Sales for those months is fully populated from QuickBooks.`
+      : "";
 
     const roasSeries = buildChannelSeries(periods, labels, "roas", 1);
     renderMultiLineChart("chart-roas-by-channel", roasSeries, { format: (v) => v.toFixed(1) + "x", inProgressIndex: lastIdx });
@@ -1839,22 +1859,52 @@
       payrollRow.innerHTML = `<p class="sku-revenue-note">Not enough recent payroll history to estimate the next payment.</p>`;
     }
 
+    renderOverheadTable(data.overhead_accounts || []);
+  }
+
+  // Account-number prefixes (not exact labels, since QBO labels carry a trailing description
+  // that varies) grouped under one "Wages / Payroll" line - founder/employee compensation,
+  // payroll taxes, benefits, the fractional CFO's fee, and payroll-adjacent software. Not
+  // necessarily exhaustive of every payroll-flavored account that could ever appear; judgment
+  // call on what reads as "payroll" to the founders, not a strict QBO account-type rule.
+  const PAYROLL_ACCOUNT_PREFIXES = ["71100", "71110", "71120", "71131", "72130", "83130"];
+  const MIN_OVERHEAD_LINE_ITEM = 100; // per-account monthly average below this is decluttered from the list
+
+  function stripAccountNumber(label) {
+    return label.replace(/^\d+\s+/, "");
+  }
+
+  function renderOverheadTable(overheadAccounts) {
     const overheadTable = document.getElementById("cash-overhead-table");
-    const overheadAccounts = data.overhead_accounts || [];
     if (overheadAccounts.length === 0) {
       overheadTable.innerHTML = `<p class="sku-revenue-note">No Overhead accounts found in the trailing 90-day P&L.</p>`;
-    } else {
-      const rows = overheadAccounts.map((r) => `
-        <tr><td>${r.label}</td><td>${fmtCurrency(r.monthly_avg)}</td></tr>
-      `).join("");
-      overheadTable.innerHTML = `
-        <table>
-          <thead><tr><th>Account</th><th>Typical Monthly</th></tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot><tr><td>Total</td><td>${fmtCurrency(data.overhead_monthly_total)}</td></tr></tfoot>
-        </table>
-      `;
+      return;
     }
+
+    const payrollAccounts = overheadAccounts.filter((r) => PAYROLL_ACCOUNT_PREFIXES.some((p) => r.label.startsWith(p)));
+    const payrollTotal = payrollAccounts.reduce((sum, r) => sum + r.monthly_avg, 0);
+
+    const remaining = overheadAccounts.filter((r) => !payrollAccounts.includes(r));
+    const shown = remaining.filter((r) => r.monthly_avg >= MIN_OVERHEAD_LINE_ITEM).sort((a, b) => b.monthly_avg - a.monthly_avg);
+    const excluded = remaining.filter((r) => r.monthly_avg < MIN_OVERHEAD_LINE_ITEM);
+
+    const rows = [
+      payrollTotal > 0 ? `<tr><td>Wages / Payroll</td><td>${fmtCurrency(payrollTotal)}</td></tr>` : "",
+      ...shown.map((r) => `<tr><td>${stripAccountNumber(r.label)}</td><td>${fmtCurrency(r.monthly_avg)}</td></tr>`),
+    ].join("");
+    const displayedTotal = payrollTotal + shown.reduce((sum, r) => sum + r.monthly_avg, 0);
+    const excludedNote = excluded.length > 0
+      ? `<p class="sku-revenue-note">Excludes ${excluded.length} account${excluded.length > 1 ? "s" : ""} under ${fmtCurrency(MIN_OVERHEAD_LINE_ITEM)}/mo each (${fmtCurrency(excluded.reduce((sum, r) => sum + r.monthly_avg, 0))}/mo total).</p>`
+      : "";
+
+    overheadTable.innerHTML = `
+      <table>
+        <thead><tr><th>Category</th><th>Typical Monthly</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td>Total</td><td>${fmtCurrency(displayedTotal)}</td></tr></tfoot>
+      </table>
+      ${excludedNote}
+    `;
   }
 
   async function loadCashSnapshot() {
@@ -2078,6 +2128,10 @@
         <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td></tr></tfoot>
       </table>
     `;
+    if (data.gap_days && data.gap_days.length > 0) {
+      const gapText = data.gap_days.map((g) => `${fmtDate(g.start)}–${fmtDate(g.end)}`).join(", ");
+      results.insertAdjacentHTML("beforeend", `<p class="sku-revenue-note">No data available for: ${gapText} — outside both the live-retrievable window and the historical reference's whole-month coverage.</p>`);
+    }
   }
 
   function renderSkuUnitsPeriod(data) {
