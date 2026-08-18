@@ -323,12 +323,6 @@
     font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: none;
     background: var(--warn-bg); color: var(--warn-text); padding: 2px 7px; border-radius: 6px;
   }
-  #sku-revenue-refresh-btn {
-    padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--accent); color: white; font-size: 13px; font-weight: 600; cursor: pointer;
-  }
-  #sku-revenue-refresh-btn:hover { background: var(--accent-dark); }
-  #sku-revenue-refresh-btn:disabled { background: var(--muted); cursor: not-allowed; }
   .sku-revenue-note { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 14px; }
   #sku-revenue-status { font-size: 13px; color: var(--slate); }
   #sku-revenue-status.error { color: var(--error); }
@@ -344,29 +338,27 @@
   #sku-revenue-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
 
   /* ---- SKU Units (since-inception total + on-demand period pull) ---- */
-  .sku-units-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
-  #sku-units-to-date-btn, #sku-units-period-btn {
-    padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--accent); color: white; font-size: 13px; font-weight: 600; cursor: pointer;
+  .sku-units-subsection { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .sku-units-subsection:first-of-type { margin-top: 10px; padding-top: 0; border-top: none; }
+  .sku-units-subsection h4 {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--muted); margin: 0 0 8px;
   }
-  #sku-units-period-btn { background: var(--panel); color: var(--accent); border-color: var(--accent); }
-  #sku-units-to-date-btn:hover, #sku-units-period-btn:hover { background: var(--accent-dark); color: white; }
-  #sku-units-to-date-btn:disabled, #sku-units-period-btn:disabled { background: var(--muted); color: white; border-color: var(--muted); cursor: not-allowed; }
-  #sku-units-status { font-size: 13px; color: var(--slate); }
-  #sku-units-status.error { color: var(--error); }
-  #sku-units-results table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  #sku-units-results th {
+  #sku-units-period-status, #sku-units-to-date-status { font-size: 13px; color: var(--slate); }
+  #sku-units-period-status.error, #sku-units-to-date-status.error { color: var(--error); }
+  #sku-units-period-results table, #sku-units-to-date-results table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #sku-units-period-results th, #sku-units-to-date-results th {
     text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
     letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
   }
-  #sku-units-results th:first-child { text-align: left; }
-  #sku-units-results td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-  #sku-units-results td:first-child { text-align: left; font-weight: 600; }
-  #sku-units-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
-  #sku-units-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
-  #sku-units-results tr.sku-product-row td { font-weight: 700; background: var(--bg); }
-  #sku-units-results tr.sku-variant-row td:first-child { padding-left: 22px; font-weight: 500; }
-  #sku-units-results tr.sku-variant-row td:last-child { font-weight: 500; }
+  #sku-units-period-results th:first-child, #sku-units-to-date-results th:first-child { text-align: left; }
+  #sku-units-period-results td, #sku-units-to-date-results td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #sku-units-period-results td:first-child, #sku-units-to-date-results td:first-child { text-align: left; font-weight: 600; }
+  #sku-units-period-results .sku-code, #sku-units-to-date-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
+  #sku-units-period-results tfoot td, #sku-units-to-date-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+  #sku-units-period-results tr.sku-product-row td, #sku-units-to-date-results tr.sku-product-row td { font-weight: 700; background: var(--bg); }
+  #sku-units-period-results tr.sku-variant-row td:first-child, #sku-units-to-date-results tr.sku-variant-row td:first-child { padding-left: 22px; font-weight: 500; }
+  #sku-units-period-results tr.sku-variant-row td:last-child, #sku-units-to-date-results tr.sku-variant-row td:last-child { font-weight: 500; }
   .chart-tooltip {
     display: none;
     position: fixed;
@@ -655,7 +647,6 @@
               <div id="sku-revenue-section" class="card sku-perf-card">
                 <div class="card-header-row">
                   <h3>SKU Revenue <span class="beta-tag">Beta</span></h3>
-                  <button id="sku-revenue-refresh-btn">Refresh SKU Data</button>
                 </div>
                 <p class="sku-revenue-note" id="sku-revenue-note">DTC only, may lag a few days behind Shopify — how this works</p>
                 <div id="sku-revenue-status"></div>
@@ -665,14 +656,18 @@
               <div id="sku-units-section" class="card sku-perf-card">
                 <div class="card-header-row">
                   <h3>SKU Units <span class="beta-tag">Beta</span></h3>
-                  <div class="sku-units-btn-group">
-                    <button id="sku-units-to-date-btn">Since Inception</button>
-                    <button id="sku-units-period-btn">For Selected Period</button>
-                  </div>
                 </div>
-                <p class="sku-revenue-note" id="sku-units-note">Since-inception total, or pull any period — how this works</p>
-                <div id="sku-units-status"></div>
-                <div id="sku-units-results"></div>
+                <p class="sku-revenue-note" id="sku-units-note">Selected period, and the total since inception — how this works</p>
+                <div class="sku-units-subsection">
+                  <h4>This Period</h4>
+                  <div id="sku-units-period-status"></div>
+                  <div id="sku-units-period-results"></div>
+                </div>
+                <div class="sku-units-subsection">
+                  <h4>Since Inception</h4>
+                  <div id="sku-units-to-date-status"></div>
+                  <div id="sku-units-to-date-results"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -1279,10 +1274,11 @@
       dashboardContent.style.display = "block";
       // Auto-run on every load/range change, same as every other section on this page -
       // fired only after renderDashboard sets lastDashboardData, since SKU Revenue's inline
-      // shipping-exclusion note reads it. "Since Inception" stays manual-only, since it's a
-      // different question ("total ever", not "this period") that doesn't change with the range.
+      // shipping-exclusion note reads it. "Since Inception" is range-independent (always
+      // "total ever") but still auto-loads on every dashboard load, just not on range change.
       loadSkuRevenue();
       loadSkuUnitsPeriod();
+      loadSkuUnitsToDate();
     } catch (e) {
       dashboardStatus.textContent = "Couldn't reach the server — check your connection and try again.";
       dashboardStatus.className = "error";
@@ -1676,11 +1672,9 @@
   }
 
   async function loadSkuRevenue() {
-    const btn = document.getElementById("sku-revenue-refresh-btn");
     const status = document.getElementById("sku-revenue-status");
     const results = document.getElementById("sku-revenue-results");
 
-    btn.disabled = true;
     status.textContent = "Pulling and parsing transactions — this can take a few seconds...";
     status.className = "";
     results.innerHTML = "";
@@ -1704,11 +1698,8 @@
     } catch (e) {
       status.textContent = "Couldn't reach the server — check your connection and try again.";
       status.className = "error";
-    } finally {
-      btn.disabled = false;
     }
   }
-  document.getElementById("sku-revenue-refresh-btn").addEventListener("click", loadSkuRevenue);
 
   // ---- SKU Units (since-inception total + on-demand period pull) ----
   // Groups SKU entries by their registered "product" (pack-size variants of the same bottle
@@ -1730,7 +1721,7 @@
   }
 
   function renderSkuUnitsToDate(data) {
-    const results = document.getElementById("sku-units-results");
+    const results = document.getElementById("sku-units-to-date-results");
     const skus = Object.entries(data.skus || {});
     if (skus.length === 0) {
       results.innerHTML = `<p class="sku-revenue-note">No units found.</p>`;
@@ -1762,7 +1753,7 @@
   }
 
   function renderSkuUnitsPeriod(data) {
-    const results = document.getElementById("sku-units-results");
+    const results = document.getElementById("sku-units-period-results");
     const skus = Object.entries(data.skus || {});
     if (skus.length === 0) {
       results.innerHTML = `<p class="sku-revenue-note">No units found for this range.</p>`;
@@ -1813,13 +1804,9 @@
   }
 
   async function loadSkuUnitsToDate() {
-    const toDateBtn = document.getElementById("sku-units-to-date-btn");
-    const periodBtn = document.getElementById("sku-units-period-btn");
-    const status = document.getElementById("sku-units-status");
-    const results = document.getElementById("sku-units-results");
+    const status = document.getElementById("sku-units-to-date-status");
+    const results = document.getElementById("sku-units-to-date-results");
 
-    toDateBtn.disabled = true;
-    periodBtn.disabled = true;
     status.textContent = "Pulling reference history and live current-month data...";
     status.className = "";
     results.innerHTML = "";
@@ -1842,20 +1829,13 @@
     } catch (e) {
       status.textContent = "Couldn't reach the server — check your connection and try again.";
       status.className = "error";
-    } finally {
-      toDateBtn.disabled = false;
-      periodBtn.disabled = false;
     }
   }
 
   async function loadSkuUnitsPeriod() {
-    const toDateBtn = document.getElementById("sku-units-to-date-btn");
-    const periodBtn = document.getElementById("sku-units-period-btn");
-    const status = document.getElementById("sku-units-status");
-    const results = document.getElementById("sku-units-results");
+    const status = document.getElementById("sku-units-period-status");
+    const results = document.getElementById("sku-units-period-results");
 
-    toDateBtn.disabled = true;
-    periodBtn.disabled = true;
     status.textContent = "Pulling live Shopify data for the selected period...";
     status.className = "";
     results.innerHTML = "";
@@ -1877,14 +1857,8 @@
     } catch (e) {
       status.textContent = "Couldn't reach the server — check your connection and try again.";
       status.className = "error";
-    } finally {
-      toDateBtn.disabled = false;
-      periodBtn.disabled = false;
     }
   }
-
-  document.getElementById("sku-units-to-date-btn").addEventListener("click", loadSkuUnitsToDate);
-  document.getElementById("sku-units-period-btn").addEventListener("click", loadSkuUnitsPeriod);
 
   // ---- Chat ----
   let chatHistory = [];  // {role, content} turns, sent with each /ask call so follow-ups
