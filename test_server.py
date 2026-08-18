@@ -213,13 +213,13 @@ def test_sku_units_requires_date_range():
 def test_sku_units_passes_through_date_range(monkeypatch):
     captured = {}
 
-    def _fake_get_sku_units_live(shopify, start_date, end_date):
+    def _fake_get_sku_units_for_period(shopify, start_date, end_date):
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         return {"skus": {}}
 
     monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
-    monkeypatch.setattr(server, "get_sku_units_live", _fake_get_sku_units_live)
+    monkeypatch.setattr(server, "get_sku_units_for_period", _fake_get_sku_units_for_period)
 
     response = client.get(
         "/sku-units?start_date=2026-08-10&end_date=2026-08-12", headers=AUTH_HEADER
@@ -234,7 +234,7 @@ def test_sku_units_returns_502_on_failure(monkeypatch):
     def _boom(shopify, start_date, end_date):
         raise RuntimeError("Shopify is down")
 
-    monkeypatch.setattr(server, "get_sku_units_live", _boom)
+    monkeypatch.setattr(server, "get_sku_units_for_period", _boom)
     response = client.get(
         "/sku-units?start_date=2026-08-01&end_date=2026-08-17", headers=AUTH_HEADER
     )

@@ -27,7 +27,7 @@ from handlers import (
     get_dashboard_data,
     get_monthly_trend,
     get_sku_revenue_live,
-    get_sku_units_live,
+    get_sku_units_for_period,
     get_sku_units_to_date,
 )
 
@@ -141,11 +141,12 @@ def sku_units_endpoint(
     end_date: str,
     user: str = Depends(verify_token),
 ) -> dict:
-    """On-demand, live Shopify pull for an arbitrary period - the "SKU Units" card's
-    period-specific button, mirroring /sku-revenue's shape and reasoning."""
+    """On-demand pull for an arbitrary period - the "SKU Units" card's period-specific button.
+    Combines live Shopify data with the historical reference as needed - see
+    get_sku_units_for_period's docstring for why a pure live pull isn't enough for older ranges."""
     shopify = _get_shopify_context()
     try:
-        return get_sku_units_live(shopify, start_date, end_date)
+        return get_sku_units_for_period(shopify, start_date, end_date)
     except Exception as e:
         logger.exception("sku-units failed for %s to %s", start_date, end_date)
         raise HTTPException(status_code=502, detail=f"Failed to load SKU units: {e}") from e

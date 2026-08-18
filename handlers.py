@@ -6,7 +6,7 @@ import calendar
 import glob
 import json
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from nonnas_shared.config import load_channel_units_by_month, load_sku_map
 from nonnas_shared.connectors import channel_financials
@@ -141,10 +141,19 @@ def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) 
     range - built ahead of the multi-SKU rollout (2026-08-18), for when "units by channel"
     alone stops being enough to know what's actually selling.
 
-    Keyed by SKU code, each with its registered display name (via nonnas_shared.config's
-    load_sku_map - None if not registered there, e.g. a brand-new SKU or a data-entry typo -
-    still shows up under its raw Shopify SKU string rather than being silently dropped) and a
-    per-channel unit breakdown: {"OO-OO-ORG-500": {"name": "...", "channels": {"DTC": 40, ...}}}.
+    Keyed by SKU code, each with its registered display name and product grouping (via
+    nonnas_shared.config's load_sku_map - None/the raw code if not registered there, e.g. a
+    brand-new SKU or a data-entry typo, so it still shows up rather than being silently dropped),
+    a per-channel breakdown of raw Shopify line quantity, and a pack-size-adjusted "units" total:
+    {"OO-OO-ORG-501": {"name": "...", "product": "...", "pack_size": 3,
+    "channels": {"DTC": 0, "Amazon": 5, ...}, "units": 15}}.
+
+    "channels" is the raw Shopify line-item quantity (how many of that SKU/variant were ordered -
+    e.g. 5 orders of a 3-pack shows as 5, not 15). "units" is that multiplied by the registry's
+    pack_size (defaults to 1 for anything not registered, or not yet given a pack_size), which is
+    the real bottle-equivalent count - 5 orders of a 3-pack is 15 actual bottles sold. Callers
+    that want "how many actual bottles moved" (e.g. inventory, subtotal-by-product) should use
+    units; callers that want "how many orders/line-items" should use channels' raw values.
 
     Units only, not revenue - Shopify's lineItems query (shopify_client.fetch_orders) currently
     fetches only sku/quantity per line, not price. Order-level discount/refund totals aren't
@@ -166,11 +175,17 @@ def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) 
         for node in order.get("lineItems", {}).get("nodes", []):
             sku = node.get("sku") or "(no SKU)"
             qty = node.get("quantity", 0)
+            info = sku_registry.get(sku, {})
             entry = buckets.setdefault(sku, {
-                "name": sku_registry.get(sku, {}).get("name"),  # None if not in the registry
+                "name": info.get("name"),  # None if not in the registry
+                "product": info.get("product") or info.get("name") or sku,
+                "pack_size": info.get("pack_size", 1),
                 "channels": {ch: 0 for ch in CHANNELS},
             })
             entry["channels"][channel] = entry["channels"].get(channel, 0) + qty
+
+    for entry in buckets.values():
+        entry["units"] = sum(entry["channels"].values()) * entry["pack_size"]
 
     return {
         "start_date": start_date,
@@ -218,8 +233,12 @@ def get_sku_units_to_date(shopify: ShopifyContext, today: date | None = None) ->
         fallback_sku = sole_active_sku_as_of(sku_registry, month_end)
         if fallback_sku is None:
             continue
+        # Every historical month predates any pack-size SKU's launch (see sole_active_sku_as_of),
+        # so the CSV's total_units is already a real bottle count - no pack_size multiplier needed.
+        info = sku_registry.get(fallback_sku, {})
         bucket = skus.setdefault(fallback_sku, {
-            "name": sku_registry.get(fallback_sku, {}).get("name"),
+            "name": info.get("name"),
+            "product": info.get("product") or info.get("name") or fallback_sku,
             "units_to_date": 0,
         })
         bucket["units_to_date"] += m["total_units"]
@@ -228,15 +247,124 @@ def get_sku_units_to_date(shopify: ShopifyContext, today: date | None = None) ->
 
     live = get_sku_units_live(shopify, f"{current_month}-01", today.isoformat())
     for sku, entry in live["skus"].items():
-        live_units = sum(entry["channels"].values())
-        bucket = skus.setdefault(sku, {"name": entry["name"], "units_to_date": 0})
-        bucket["units_to_date"] += live_units
+        bucket = skus.setdefault(sku, {
+            "name": entry["name"],
+            "product": entry["product"],
+            "units_to_date": 0,
+        })
+        bucket["units_to_date"] += entry["units"]  # pack_size-adjusted, not raw line quantity
 
     return {
         "skus": skus,
         "reference_through": reference_through,
         "live_from": live["start_date"],
         "live_to": live["end_date"],
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# Shopify's Orders API only returns orders from roughly the last 60 days for apps without the
+# read_all_orders scope (Shopify's own documented limit). Confirmed empirically 2026-08-18: a
+# single-day live pull for 61 days before today still returned real orders, 62 days before did
+# not. Kept a few days under that observed edge as a safety margin, since the exact cutoff isn't
+# something this codebase controls or can rely on being pinned to the day.
+SHOPIFY_LIVE_LOOKBACK_DAYS = 55
+
+
+def get_sku_units_for_period(
+    shopify: ShopifyContext, start_date: str, end_date: str, today: date | None = None
+) -> dict:
+    """Units sold per SKU for an arbitrary [start_date, end_date], combining a live Shopify pull
+    with the hand-reconciled channel_units_by_month.csv reference whenever the request reaches
+    further back than Shopify's own order API can retrieve (see SHOPIFY_LIVE_LOOKBACK_DAYS).
+
+    A request entirely within the live-retrievable window is answered purely from Shopify, same
+    as before. A request that reaches further back pulls the historical portion from the
+    reference instead - necessary, not optional: a pure live pull for an old date range doesn't
+    error, it just silently returns near-empty real data, which would look like "nothing sold"
+    rather than "can't see that far back."
+
+    The reference is monthly, not daily, so only whole months fully inside [start_date, end_date]
+    AND fully before the live boundary get included - a request that doesn't align to month
+    boundaries can lose precision at the edges. Days not covered by either a whole reference
+    month or the live pull are a real gap, not silently dropped - see the `gap_days` field.
+
+    Each reference month is attributed via sole_active_sku_as_of at that month's own end date -
+    see get_sku_units_to_date's docstring for why. Reference-month contributions use total_units
+    directly (already a real bottle count - see get_sku_units_to_date); live contributions use
+    the pack_size-adjusted "units" field from get_sku_units_live, not raw line quantity.
+
+    When any reference months are used, per-channel/order-level detail is not available for
+    those months (the CSV only has a company-wide monthly total) - so this returns unit totals
+    only in that case, not a channel breakdown, to avoid presenting mismatched precision as if
+    it were all equally granular.
+    """
+    today = today or date.today()
+    live_boundary = today - timedelta(days=SHOPIFY_LIVE_LOOKBACK_DAYS)
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+
+    reference = load_channel_units_by_month()
+    sku_registry = load_sku_map()
+    skus: dict = {}
+    reference_months_used: list[str] = []
+    covered: list[tuple[date, date]] = []
+
+    for month, m in reference.items():
+        if m["total_units"] is None:
+            continue
+        year, mo = (int(part) for part in month.split("-"))
+        month_start = date(year, mo, 1)
+        month_end = date(year, mo, calendar.monthrange(year, mo)[1])
+        if month_start < start or month_end > end or month_end >= live_boundary:
+            continue
+        fallback_sku = sole_active_sku_as_of(sku_registry, month_end.isoformat())
+        if fallback_sku is None:
+            continue
+        info = sku_registry.get(fallback_sku, {})
+        bucket = skus.setdefault(fallback_sku, {
+            "name": info.get("name"),
+            "product": info.get("product") or info.get("name") or fallback_sku,
+            "units": 0,
+        })
+        bucket["units"] += m["total_units"]
+        reference_months_used.append(month)
+        covered.append((month_start, month_end))
+
+    live_start = max(start, live_boundary)
+    live_result = None
+    if live_start <= end:
+        live_result = get_sku_units_live(shopify, live_start.isoformat(), end.isoformat())
+        for sku, entry in live_result["skus"].items():
+            bucket = skus.setdefault(sku, {
+                "name": entry["name"],
+                "product": entry["product"],
+                "pack_size": entry["pack_size"],
+                "units": 0,
+            })
+            bucket["units"] += entry["units"]
+            if not reference_months_used:
+                bucket["channels"] = dict(entry["channels"])  # only mix in detail if uniform
+        covered.append((live_start, end))
+
+    covered.sort()
+    gap_days: list[dict] = []
+    cursor = start
+    for c_start, c_end in covered:
+        if c_start > cursor:
+            gap_days.append({"start": cursor.isoformat(), "end": (c_start - timedelta(days=1)).isoformat()})
+        cursor = max(cursor, c_end + timedelta(days=1))
+    if cursor <= end:
+        gap_days.append({"start": cursor.isoformat(), "end": end.isoformat()})
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "skus": skus,
+        "reference_months_used": sorted(reference_months_used),
+        "live_from": live_result["start_date"] if live_result else None,
+        "live_to": live_result["end_date"] if live_result else None,
+        "gap_days": gap_days,
         "as_of": datetime.now(timezone.utc).isoformat(),
     }
 

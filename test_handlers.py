@@ -190,10 +190,32 @@ def test_sku_units_live_buckets_by_sku_then_channel(monkeypatch):
     assert result["skus"]["OO-OO-ORG-500"]["name"] == "Nonna's Olive Oil (500mL Original)"
     assert result["skus"]["OO-OO-ORG-500"]["channels"]["DTC"] == 3
     assert result["skus"]["OO-OO-ORG-500"]["channels"]["TikTok"] == 5
+    assert result["skus"]["OO-OO-ORG-500"]["units"] == 8  # pack_size 1 - same as raw quantity
+    assert result["skus"]["OO-OO-ORG-500"]["product"] == "Nonna's Olive Oil (500mL Original)"
     assert result["skus"]["OO-OO-COOK-750ML-SHIP"]["channels"]["DTC"] == 1
     assert result["skus"]["(no SKU)"]["name"] is None  # not in the registry
     assert result["skus"]["(no SKU)"]["channels"]["DTC"] == 2
+    assert result["skus"]["(no SKU)"]["product"] == "(no SKU)"  # falls back to the raw code
     assert len(result["skus"]) == 3  # draft order's SKU never appears
+
+
+def test_sku_units_live_multiplies_pack_size_into_units(monkeypatch):
+    """5 orders of a 3-pack is 15 real bottles, not 5 - the exact scenario a 3-pack SKU exists
+    for. "channels" stays the raw Shopify line quantity (5); "units" is the bottle-equivalent."""
+    orders = [
+        {"sourceName": "amazon", "lineItems": {"nodes": [{"sku": "OO-OO-ORG-501", "quantity": 5}]}},
+    ]
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders", lambda domain, token, start, end: orders)
+    monkeypatch.setattr(
+        handlers, "load_sku_map",
+        lambda: {"OO-OO-ORG-501": {"name": "3-Pack", "product": "Nonna's Olive Oil (500mL Original)", "pack_size": 3, "status": "active"}},
+    )
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_sku_units_live(fake_shopify, "2026-08-01", "2026-08-17")
+
+    assert result["skus"]["OO-OO-ORG-501"]["channels"]["Amazon"] == 5
+    assert result["skus"]["OO-OO-ORG-501"]["units"] == 15
 
 
 def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
@@ -220,7 +242,13 @@ def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
         assert start == "2026-08-01" and end == "2026-08-18"
         return {
             "start_date": start, "end_date": end, "pulled_at": "x",
-            "skus": {"OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "channels": {"DTC": 55, "TikTok": 24, "Amazon": 90, "Wholesale": 0}}},
+            "skus": {"OO-OO-ORG-500": {
+                "name": "Nonna's Olive Oil (500mL Original)",
+                "product": "Nonna's Olive Oil (500mL Original)",
+                "pack_size": 1,
+                "channels": {"DTC": 55, "TikTok": 24, "Amazon": 90, "Wholesale": 0},
+                "units": 169,
+            }},
         }
     monkeypatch.setattr(handlers, "get_sku_units_live", fake_live)
 
@@ -261,6 +289,87 @@ def test_sku_units_to_date_excludes_month_ambiguous_by_its_own_end(monkeypatch):
     result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 9, 1))
 
     assert result["skus"] == {}
+
+
+def _mock_registry_for_period_tests(handlers, monkeypatch):
+    monkeypatch.setattr(
+        handlers, "load_sku_map",
+        lambda: {"OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "product": "Nonna's Olive Oil (500mL Original)", "status": "active"}},
+    )
+
+
+def test_sku_units_for_period_pure_live_when_entirely_recent(monkeypatch):
+    """A range entirely inside the live-retrievable window never touches the reference file."""
+    _mock_registry_for_period_tests(handlers, monkeypatch)
+    monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: {"2026-04": {"total_units": 999, "DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "note": ""}})
+
+    def fake_live(shopify, start, end):
+        assert start == "2026-08-01" and end == "2026-08-17"
+        return {"start_date": start, "end_date": end, "pulled_at": "x", "skus": {
+            "OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "product": "Nonna's Olive Oil (500mL Original)", "pack_size": 1, "channels": {"DTC": 40, "TikTok": 0, "Amazon": 0, "Wholesale": 0}, "units": 40},
+        }}
+    monkeypatch.setattr(handlers, "get_sku_units_live", fake_live)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_sku_units_for_period(fake_shopify, "2026-08-01", "2026-08-17", today=date(2026, 8, 18))
+
+    assert result["skus"]["OO-OO-ORG-500"]["units"] == 40
+    assert result["skus"]["OO-OO-ORG-500"]["channels"] == {"DTC": 40, "TikTok": 0, "Amazon": 0, "Wholesale": 0}
+    assert result["skus"]["OO-OO-ORG-500"]["pack_size"] == 1
+    assert result["reference_months_used"] == []
+    assert result["gap_days"] == []
+
+
+def test_sku_units_for_period_pure_reference_when_whole_month_fully_historical(monkeypatch):
+    """A fully historical, month-aligned range never attempts a live pull."""
+    _mock_registry_for_period_tests(handlers, monkeypatch)
+    monkeypatch.setattr(
+        handlers, "load_channel_units_by_month",
+        lambda: {"2026-04": {"total_units": 1344, "DTC": 210, "TikTok": 749, "Amazon": 121, "Wholesale": 264, "note": ""}},
+    )
+
+    def fake_live(shopify, start, end):
+        raise AssertionError("must not pull live for a fully historical range")
+    monkeypatch.setattr(handlers, "get_sku_units_live", fake_live)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_sku_units_for_period(fake_shopify, "2026-04-01", "2026-04-30", today=date(2026, 8, 18))
+
+    assert result["skus"]["OO-OO-ORG-500"]["units"] == 1344
+    assert result["reference_months_used"] == ["2026-04"]
+    assert result["live_from"] is None
+    assert result["gap_days"] == []
+
+
+def test_sku_units_for_period_combines_and_reports_gap_when_spanning(monkeypatch):
+    """A range spanning the live boundary combines both sources - and a stretch that's neither a
+    whole covered reference month nor inside the live pull is reported as a real gap, not
+    silently dropped."""
+    _mock_registry_for_period_tests(handlers, monkeypatch)
+    monkeypatch.setattr(
+        handlers, "load_channel_units_by_month",
+        lambda: {"2026-04": {"total_units": 1344, "DTC": 210, "TikTok": 749, "Amazon": 121, "Wholesale": 264, "note": ""}},
+    )
+
+    def fake_live(shopify, start, end):
+        return {"start_date": start, "end_date": end, "pulled_at": "x", "skus": {
+            "OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "product": "Nonna's Olive Oil (500mL Original)", "pack_size": 1, "channels": {"DTC": 10, "TikTok": 0, "Amazon": 0, "Wholesale": 0}, "units": 10},
+        }}
+    monkeypatch.setattr(handlers, "get_sku_units_live", fake_live)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    # today=2026-08-18 -> live boundary ~2026-06-24 (55 days back). April (whole month, ends well
+    # before the boundary) is reference-only; May/June aren't whole-covered reference months
+    # (June's own end is on/after the boundary) so they fall into the gap; the live pull only
+    # starts at the boundary itself.
+    result = handlers.get_sku_units_for_period(fake_shopify, "2026-04-01", "2026-08-17", today=date(2026, 8, 18))
+
+    assert result["reference_months_used"] == ["2026-04"]
+    assert result["skus"]["OO-OO-ORG-500"]["units"] == 1344 + 10
+    assert result["live_from"] is not None
+    assert len(result["gap_days"]) == 1
+    gap = result["gap_days"][0]
+    assert gap["start"] == "2026-05-01"  # first uncovered day right after April
 
 
 def test_sku_units_to_date_no_fallback_when_multiple_active(monkeypatch):

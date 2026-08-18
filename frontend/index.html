@@ -336,6 +336,9 @@
   #sku-units-results td:first-child { text-align: left; font-weight: 600; }
   #sku-units-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
   #sku-units-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+  #sku-units-results tr.sku-product-row td { font-weight: 700; background: var(--bg); }
+  #sku-units-results tr.sku-variant-row td:first-child { padding-left: 22px; font-weight: 500; }
+  #sku-units-results tr.sku-variant-row td:last-child { font-weight: 500; }
   .chart-tooltip {
     display: none;
     position: fixed;
@@ -1455,6 +1458,24 @@
   document.getElementById("sku-revenue-refresh-btn").addEventListener("click", loadSkuRevenue);
 
   // ---- SKU Units (since-inception total + on-demand period pull) ----
+  // Groups SKU entries by their registered "product" (pack-size variants of the same bottle
+  // roll up together, e.g. the single bottle + its 3-pack + its 6-pack) and sorts both the
+  // product groups and their variants by unitsFor(), descending.
+  function groupSkusByProduct(skus, unitsFor) {
+    const groups = new Map();
+    for (const [sku, m] of skus) {
+      const product = m.product || m.name || sku;
+      if (!groups.has(product)) groups.set(product, { product, total: 0, variants: [] });
+      const g = groups.get(product);
+      g.total += unitsFor(m);
+      g.variants.push([sku, m]);
+    }
+    const list = [...groups.values()];
+    list.forEach((g) => g.variants.sort((a, b) => unitsFor(b[1]) - unitsFor(a[1])));
+    list.sort((a, b) => b.total - a.total);
+    return list;
+  }
+
   function renderSkuUnitsToDate(data) {
     const results = document.getElementById("sku-units-results");
     const skus = Object.entries(data.skus || {});
@@ -1462,18 +1483,25 @@
       results.innerHTML = `<p class="sku-revenue-note">No units found.</p>`;
       return;
     }
-    skus.sort((a, b) => b[1].units_to_date - a[1].units_to_date);
+    const unitsFor = (m) => m.units_to_date;
+    const groups = groupSkusByProduct(skus, unitsFor);
     let total = 0;
-    const rows = skus.map(([sku, m]) => {
-      total += m.units_to_date;
-      const label = m.name
-        ? `${m.name}<span class="sku-code">${sku}</span>`
-        : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
-      return `<tr><td>${label}</td><td>${fmtNumber(m.units_to_date)}</td></tr>`;
+    const rows = groups.map((g) => {
+      total += g.total;
+      const variantRows = g.variants.length > 1 ? g.variants.map(([sku, m]) => `
+        <tr class="sku-variant-row">
+          <td>↳ ${m.name || sku}<span class="sku-code">${sku}</span></td>
+          <td>${fmtNumber(m.units_to_date)}</td>
+        </tr>
+      `).join("") : "";
+      return `
+        <tr class="sku-product-row"><td>${g.product}</td><td>${fmtNumber(g.total)}</td></tr>
+        ${variantRows}
+      `;
     }).join("");
     results.innerHTML = `
       <table>
-        <thead><tr><th>SKU</th><th>Units to Date</th></tr></thead>
+        <thead><tr><th>Product</th><th>Units to Date</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td></tr></tfoot>
       </table>
@@ -1487,25 +1515,48 @@
       results.innerHTML = `<p class="sku-revenue-note">No units found for this range.</p>`;
       return;
     }
-    const totalFor = (m) => Object.values(m.channels).reduce((a, b) => a + b, 0);
-    skus.sort((a, b) => totalFor(b[1]) - totalFor(a[1]));
+    const unitsFor = (m) => m.units;
+    const groups = groupSkusByProduct(skus, unitsFor);
     let total = 0;
-    const rows = skus.map(([sku, m]) => {
-      const skuTotal = totalFor(m);
-      total += skuTotal;
-      const label = m.name
-        ? `${m.name}<span class="sku-code">${sku}</span>`
-        : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
-      const channelText = CHANNELS.map((ch) => `${ch} ${fmtNumber(m.channels[ch] || 0)}`).join(" · ");
-      return `<tr><td>${label}<span class="sku-code">${channelText}</span></td><td>${fmtNumber(skuTotal)}</td></tr>`;
+    const rows = groups.map((g) => {
+      total += g.total;
+      const variantRows = g.variants.map(([sku, m]) => {
+        const label = m.name
+          ? `${m.name}<span class="sku-code">${sku}</span>`
+          : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
+        // "channels" (raw order/line-item counts) is only present when this period was answered
+        // purely from live Shopify data - a historical-reference month has no per-channel detail,
+        // only a monthly total, so there's nothing honest to show underneath in that case.
+        let detail = "";
+        if (m.channels) {
+          const orders = Object.values(m.channels).reduce((a, b) => a + b, 0);
+          const channelText = CHANNELS.filter((ch) => m.channels[ch]).map((ch) => `${ch} ${fmtNumber(m.channels[ch])}`).join(" · ");
+          const packNote = m.pack_size > 1 ? ` orders (×${m.pack_size} = ${fmtNumber(m.units)} units)` : " orders";
+          detail = `<span class="sku-code">${fmtNumber(orders)}${packNote}${channelText ? " — " + channelText : ""}</span>`;
+        }
+        return `
+          <tr class="sku-variant-row">
+            <td>↳ ${label}${detail}</td>
+            <td>${fmtNumber(m.units)}</td>
+          </tr>
+        `;
+      }).join("");
+      const showProductRow = g.variants.length > 1;
+      return showProductRow
+        ? `<tr class="sku-product-row"><td>${g.product}</td><td>${fmtNumber(g.total)}</td></tr>${variantRows}`
+        : variantRows;
     }).join("");
     results.innerHTML = `
       <table>
-        <thead><tr><th>SKU</th><th>Units</th></tr></thead>
+        <thead><tr><th>Product</th><th>Units</th></tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td></tr></tfoot>
       </table>
     `;
+    if (data.gap_days && data.gap_days.length > 0) {
+      const gapText = data.gap_days.map((g) => `${fmtDate(g.start)}–${fmtDate(g.end)}`).join(", ");
+      results.insertAdjacentHTML("beforeend", `<p class="sku-revenue-note">No data available for: ${gapText} — outside both the live-retrievable window and the historical reference's whole-month coverage.</p>`);
+    }
   }
 
   async function loadSkuUnitsToDate() {
