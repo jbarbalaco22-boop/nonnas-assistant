@@ -198,3 +198,73 @@ def test_sku_revenue_returns_502_on_failure(monkeypatch):
     )
     assert response.status_code == 502
     assert "QBO query timed out" in response.json()["detail"]
+
+
+def test_sku_units_rejects_missing_auth():
+    response = client.get("/sku-units?start_date=2026-08-01&end_date=2026-08-17")
+    assert response.status_code == 401
+
+
+def test_sku_units_requires_date_range():
+    response = client.get("/sku-units", headers=AUTH_HEADER)
+    assert response.status_code == 422
+
+
+def test_sku_units_passes_through_date_range(monkeypatch):
+    captured = {}
+
+    def _fake_get_sku_units_live(shopify, start_date, end_date):
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        return {"skus": {}}
+
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+    monkeypatch.setattr(server, "get_sku_units_live", _fake_get_sku_units_live)
+
+    response = client.get(
+        "/sku-units?start_date=2026-08-10&end_date=2026-08-12", headers=AUTH_HEADER
+    )
+    assert response.status_code == 200
+    assert captured == {"start_date": "2026-08-10", "end_date": "2026-08-12"}
+
+
+def test_sku_units_returns_502_on_failure(monkeypatch):
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+
+    def _boom(shopify, start_date, end_date):
+        raise RuntimeError("Shopify is down")
+
+    monkeypatch.setattr(server, "get_sku_units_live", _boom)
+    response = client.get(
+        "/sku-units?start_date=2026-08-01&end_date=2026-08-17", headers=AUTH_HEADER
+    )
+    assert response.status_code == 502
+    assert "Shopify is down" in response.json()["detail"]
+
+
+def test_sku_units_to_date_rejects_missing_auth():
+    response = client.get("/sku-units-to-date")
+    assert response.status_code == 401
+
+
+def test_sku_units_to_date_calls_handler(monkeypatch):
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+    monkeypatch.setattr(
+        server, "get_sku_units_to_date",
+        lambda shopify: {"skus": {"OO-OO-ORG-500": {"name": "x", "units_to_date": 13704}}},
+    )
+    response = client.get("/sku-units-to-date", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    assert response.json()["skus"]["OO-OO-ORG-500"]["units_to_date"] == 13704
+
+
+def test_sku_units_to_date_returns_502_on_failure(monkeypatch):
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+
+    def _boom(shopify):
+        raise RuntimeError("reference file missing")
+
+    monkeypatch.setattr(server, "get_sku_units_to_date", _boom)
+    response = client.get("/sku-units-to-date", headers=AUTH_HEADER)
+    assert response.status_code == 502
+    assert "reference file missing" in response.json()["detail"]

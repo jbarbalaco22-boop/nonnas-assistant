@@ -305,6 +305,37 @@
   #sku-revenue-results td:first-child { text-align: left; font-weight: 600; }
   #sku-revenue-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
   #sku-revenue-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+
+  /* ---- SKU Units (since-inception total + on-demand period pull) ---- */
+  #sku-units-section { margin-top: 20px; }
+  #sku-units-section .card-header-row {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    margin-bottom: 10px;
+  }
+  #sku-units-section h2 {
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--slate); margin: 0; display: flex; align-items: center; gap: 8px;
+  }
+  .sku-units-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  #sku-units-to-date-btn, #sku-units-period-btn {
+    padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--accent); color: white; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #sku-units-period-btn { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+  #sku-units-to-date-btn:hover, #sku-units-period-btn:hover { background: var(--accent-dark); color: white; }
+  #sku-units-to-date-btn:disabled, #sku-units-period-btn:disabled { background: var(--muted); color: white; border-color: var(--muted); cursor: not-allowed; }
+  #sku-units-status { font-size: 13px; color: var(--slate); }
+  #sku-units-status.error { color: var(--error); }
+  #sku-units-results table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #sku-units-results th {
+    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
+    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  #sku-units-results th:first-child { text-align: left; }
+  #sku-units-results td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #sku-units-results td:first-child { text-align: left; font-weight: 600; }
+  #sku-units-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
+  #sku-units-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
   .chart-tooltip {
     display: none;
     position: fixed;
@@ -567,6 +598,25 @@
           </p>
           <div id="sku-revenue-status"></div>
           <div id="sku-revenue-results"></div>
+        </div>
+
+        <div id="sku-units-section" class="card">
+          <div class="card-header-row">
+            <h2>SKU Units <span class="beta-tag">Beta</span></h2>
+            <div class="sku-units-btn-group">
+              <button id="sku-units-to-date-btn">Since Inception</button>
+              <button id="sku-units-period-btn">For Selected Period</button>
+            </div>
+          </div>
+          <p class="sku-revenue-note">
+            "Since Inception" is every unit ever sold, combining a hand-reconciled historical
+            reference (Shopify's own order history doesn't reach back that far) with a live pull
+            for the current month. "For Selected Period" uses the date range chosen above and
+            pulls live from Shopify. All units to date are Nonna's Olive Oil (500mL Original) —
+            the only SKU that's been selling.
+          </p>
+          <div id="sku-units-status"></div>
+          <div id="sku-units-results"></div>
         </div>
       </div>
     </div>
@@ -1403,6 +1453,134 @@
     }
   }
   document.getElementById("sku-revenue-refresh-btn").addEventListener("click", loadSkuRevenue);
+
+  // ---- SKU Units (since-inception total + on-demand period pull) ----
+  function renderSkuUnitsToDate(data) {
+    const results = document.getElementById("sku-units-results");
+    const skus = Object.entries(data.skus || {});
+    if (skus.length === 0) {
+      results.innerHTML = `<p class="sku-revenue-note">No units found.</p>`;
+      return;
+    }
+    skus.sort((a, b) => b[1].units_to_date - a[1].units_to_date);
+    let total = 0;
+    const rows = skus.map(([sku, m]) => {
+      total += m.units_to_date;
+      const label = m.name
+        ? `${m.name}<span class="sku-code">${sku}</span>`
+        : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
+      return `<tr><td>${label}</td><td>${fmtNumber(m.units_to_date)}</td></tr>`;
+    }).join("");
+    results.innerHTML = `
+      <table>
+        <thead><tr><th>SKU</th><th>Units to Date</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td></tr></tfoot>
+      </table>
+    `;
+  }
+
+  function renderSkuUnitsPeriod(data) {
+    const results = document.getElementById("sku-units-results");
+    const skus = Object.entries(data.skus || {});
+    if (skus.length === 0) {
+      results.innerHTML = `<p class="sku-revenue-note">No units found for this range.</p>`;
+      return;
+    }
+    const totalFor = (m) => Object.values(m.channels).reduce((a, b) => a + b, 0);
+    skus.sort((a, b) => totalFor(b[1]) - totalFor(a[1]));
+    let total = 0;
+    const rows = skus.map(([sku, m]) => {
+      const skuTotal = totalFor(m);
+      total += skuTotal;
+      const label = m.name
+        ? `${m.name}<span class="sku-code">${sku}</span>`
+        : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
+      const channelText = CHANNELS.map((ch) => `${ch} ${fmtNumber(m.channels[ch] || 0)}`).join(" · ");
+      return `<tr><td>${label}<span class="sku-code">${channelText}</span></td><td>${fmtNumber(skuTotal)}</td></tr>`;
+    }).join("");
+    results.innerHTML = `
+      <table>
+        <thead><tr><th>SKU</th><th>Units</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td></tr></tfoot>
+      </table>
+    `;
+  }
+
+  async function loadSkuUnitsToDate() {
+    const toDateBtn = document.getElementById("sku-units-to-date-btn");
+    const periodBtn = document.getElementById("sku-units-period-btn");
+    const status = document.getElementById("sku-units-status");
+    const results = document.getElementById("sku-units-results");
+
+    toDateBtn.disabled = true;
+    periodBtn.disabled = true;
+    status.textContent = "Pulling reference history and live current-month data...";
+    status.className = "";
+    results.innerHTML = "";
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const res = await fetch(`${API_BASE}/sku-units-to-date`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.detail || "Couldn't load units to date.";
+        status.className = "error";
+        return;
+      }
+      renderSkuUnitsToDate(data);
+      status.textContent =
+        `Since inception through ${fmtDate(data.live_to)} · reference through ${data.reference_through || "—"}, `
+        + `live from ${fmtDate(data.live_from)} · as of ${fmtDateTime(data.as_of)}`;
+    } catch (e) {
+      status.textContent = "Couldn't reach the server — check your connection and try again.";
+      status.className = "error";
+    } finally {
+      toDateBtn.disabled = false;
+      periodBtn.disabled = false;
+    }
+  }
+
+  async function loadSkuUnitsPeriod() {
+    const toDateBtn = document.getElementById("sku-units-to-date-btn");
+    const periodBtn = document.getElementById("sku-units-period-btn");
+    const status = document.getElementById("sku-units-status");
+    const results = document.getElementById("sku-units-results");
+
+    toDateBtn.disabled = true;
+    periodBtn.disabled = true;
+    status.textContent = "Pulling live Shopify data for the selected period...";
+    status.className = "";
+    results.innerHTML = "";
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const params = new URLSearchParams({ start_date: currentRange.start, end_date: currentRange.end });
+      const res = await fetch(`${API_BASE}/sku-units?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.detail || "Couldn't load SKU units.";
+        status.className = "error";
+        return;
+      }
+      renderSkuUnitsPeriod(data);
+      status.textContent = `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.pulled_at)}`;
+    } catch (e) {
+      status.textContent = "Couldn't reach the server — check your connection and try again.";
+      status.className = "error";
+    } finally {
+      toDateBtn.disabled = false;
+      periodBtn.disabled = false;
+    }
+  }
+
+  document.getElementById("sku-units-to-date-btn").addEventListener("click", loadSkuUnitsToDate);
+  document.getElementById("sku-units-period-btn").addEventListener("click", loadSkuUnitsPeriod);
 
   // ---- Chat ----
   let chatHistory = [];  // {role, content} turns, sent with each /ask call so follow-ups

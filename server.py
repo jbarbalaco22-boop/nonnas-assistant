@@ -23,7 +23,13 @@ from pydantic import BaseModel
 
 from assistant import _get_qbo_context, _get_shopify_context, ask
 from auth import verify_token
-from handlers import get_dashboard_data, get_monthly_trend, get_sku_revenue_live
+from handlers import (
+    get_dashboard_data,
+    get_monthly_trend,
+    get_sku_revenue_live,
+    get_sku_units_live,
+    get_sku_units_to_date,
+)
 
 logger = logging.getLogger("nonnas_assistant")
 app = FastAPI(title="Harvest")
@@ -127,6 +133,35 @@ def sku_revenue_endpoint(
     except Exception as e:
         logger.exception("sku-revenue failed for %s to %s", start_date, end_date)
         raise HTTPException(status_code=502, detail=f"Failed to load SKU revenue: {e}") from e
+
+
+@app.get("/sku-units")
+def sku_units_endpoint(
+    start_date: str,
+    end_date: str,
+    user: str = Depends(verify_token),
+) -> dict:
+    """On-demand, live Shopify pull for an arbitrary period - the "SKU Units" card's
+    period-specific button, mirroring /sku-revenue's shape and reasoning."""
+    shopify = _get_shopify_context()
+    try:
+        return get_sku_units_live(shopify, start_date, end_date)
+    except Exception as e:
+        logger.exception("sku-units failed for %s to %s", start_date, end_date)
+        raise HTTPException(status_code=502, detail=f"Failed to load SKU units: {e}") from e
+
+
+@app.get("/sku-units-to-date")
+def sku_units_to_date_endpoint(user: str = Depends(verify_token)) -> dict:
+    """Total units sold per SKU since inception - see get_sku_units_to_date's docstring for how
+    this combines the hand-reconciled historical reference with a live current-month pull.
+    No date params: this always means "everything up to today," not a selectable range."""
+    shopify = _get_shopify_context()
+    try:
+        return get_sku_units_to_date(shopify)
+    except Exception as e:
+        logger.exception("sku-units-to-date failed")
+        raise HTTPException(status_code=502, detail=f"Failed to load units to date: {e}") from e
 
 
 @app.post("/ask", response_model=AskResponse)

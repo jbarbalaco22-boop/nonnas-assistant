@@ -196,6 +196,58 @@ def test_sku_units_live_buckets_by_sku_then_channel(monkeypatch):
     assert len(result["skus"]) == 3  # draft order's SKU never appears
 
 
+def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
+    reference = {
+        "2024-09": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 687, "note": ""},
+        "2024-10": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 28, "note": ""},
+        "2026-07": {"DTC": 234, "TikTok": 220, "Amazon": 390, "Wholesale": 12, "total_units": 856, "note": ""},
+        # Current month's own CSV row must be ignored - the live pull replaces it, since a CSV
+        # snapshot can be stale mid-month.
+        "2026-08": {"DTC": 5, "TikTok": 0, "Amazon": 0, "Wholesale": 0, "total_units": 5, "note": "stale snapshot"},
+    }
+    monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: reference)
+
+    def fake_live(shopify, start, end):
+        assert start == "2026-08-01" and end == "2026-08-18"
+        return {
+            "start_date": start, "end_date": end, "pulled_at": "x",
+            "skus": {"OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "channels": {"DTC": 55, "TikTok": 24, "Amazon": 90, "Wholesale": 0}}},
+        }
+    monkeypatch.setattr(handlers, "get_sku_units_live", fake_live)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 8, 18))
+
+    # historical: 687 + 28 + 856 = 1571 (2026-08's own stale row excluded); live: 55+24+90=169
+    assert result["skus"]["OO-OO-ORG-500"]["units_to_date"] == 1571 + 169
+    assert result["reference_through"] == "2026-07"
+    assert result["live_from"] == "2026-08-01"
+    assert result["live_to"] == "2026-08-18"
+
+
+def test_sku_units_to_date_no_fallback_when_multiple_active(monkeypatch):
+    reference = {"2024-09": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 687, "note": ""}}
+    monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: reference)
+    monkeypatch.setattr(
+        handlers, "load_sku_map",
+        lambda: {
+            "OO-OO-ORG-500": {"name": "A", "status": "active"},
+            "OO-OO-COOK-750ML-SHIP": {"name": "B", "status": "active"},
+        },
+    )
+    monkeypatch.setattr(
+        handlers, "get_sku_units_live",
+        lambda shopify, start, end: {"start_date": start, "end_date": end, "pulled_at": "x", "skus": {}},
+    )
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 8, 18))
+
+    # No sole active SKU to safely attribute the 687 historical units to - they're dropped
+    # rather than guessed at, same "never guess" principle as the revenue-side fallback.
+    assert result["skus"] == {}
+
+
 def test_sku_revenue_live_uses_shared_qbo_client_and_parser(monkeypatch):
     real_je = {
         "DocNumber": "A2XSH-10Aug-12Aug-281",

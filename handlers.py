@@ -180,6 +180,64 @@ def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) 
     }
 
 
+def get_sku_units_to_date(shopify: ShopifyContext, today: date | None = None) -> dict:
+    """Total units sold per SKU since inception, combining two sources - the same "closed
+    historical months are a trusted reference, the current month is always live" split used
+    elsewhere in this codebase (e.g. get_monthly_trend):
+
+    1. channel_units_by_month.csv's total_units, summed across every month strictly before the
+       current one. This is necessary, not just a fallback: confirmed live (2026-08-18) that
+       Shopify's own order API returns zero results for known-real historical months (Sept 2024,
+       April 2025) that the CSV correctly has units for - Shopify's live API has some retention
+       limit this store is well past for its early history, so there is no way to live-pull that
+       far back. The CSV is the only source for it.
+    2. get_sku_units_live for [first of the current month, today] - real, current-month Shopify
+       data, correctly SKU-attributed via Shopify's own per-line SKU field (no guessing needed
+       here, unlike the QBO revenue side - Shopify has always tracked this).
+
+    Every historical month's total_units is attributed to OO-OO-ORG-500 - the sole SKU that has
+    ever sold (see sku_map.json's note on that SKU) - since the CSV only tracks a company-wide
+    total, not a per-SKU breakdown. The live current-month portion is already properly
+    SKU-bucketed, so this naturally starts reflecting real multi-SKU splits the moment a second
+    SKU has its first live sale, without needing any code change here.
+    """
+    today = today or date.today()
+    current_month = today.strftime("%Y-%m")
+    reference = load_channel_units_by_month()
+
+    historical_total = sum(
+        m["total_units"] for month, m in reference.items()
+        if month < current_month and m["total_units"] is not None
+    )
+    reference_through = max((m for m in reference if m < current_month), default=None)
+
+    live = get_sku_units_live(shopify, f"{current_month}-01", today.isoformat())
+    sku_registry = load_sku_map()
+    fallback_sku = None
+    active = [sku for sku, info in sku_registry.items() if info.get("status") == "active"]
+    if len(active) == 1:
+        fallback_sku = active[0]
+
+    skus: dict = {}
+    if fallback_sku:
+        skus[fallback_sku] = {
+            "name": sku_registry.get(fallback_sku, {}).get("name"),
+            "units_to_date": historical_total,
+        }
+    for sku, entry in live["skus"].items():
+        live_units = sum(entry["channels"].values())
+        bucket = skus.setdefault(sku, {"name": entry["name"], "units_to_date": 0})
+        bucket["units_to_date"] += live_units
+
+    return {
+        "skus": skus,
+        "reference_through": reference_through,
+        "live_from": live["start_date"],
+        "live_to": live["end_date"],
+        "as_of": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def get_sku_revenue_live(qbo: QboContext, start_date: str, end_date: str) -> dict:
     """Live pull: revenue, discounts, and refunds per SKU for an arbitrary date range, recovered
     from raw JournalEntry transactions' free-text Description field - see nonnas_shared's
