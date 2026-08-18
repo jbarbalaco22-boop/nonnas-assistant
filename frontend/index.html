@@ -219,6 +219,7 @@
   .delta.down { color: var(--error); }
   .delta.flat { color: var(--muted); }
   .run-rate-note { font-size: 11.5px; font-weight: 500; color: var(--muted); margin-top: 4px; }
+  .stat-sparkline { width: 110px; max-width: 100%; margin-top: 8px; }
   .positive { color: var(--success); }
   .negative { color: var(--error); }
 
@@ -232,7 +233,7 @@
   #channel-grid-summary { margin-bottom: 20px; }
   .channel-secondary-col { display: flex; flex-direction: column; gap: 16px; }
   .channel-card h3 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
-  .channel-card.muted { opacity: 0.92; }
+  .channel-card.secondary { opacity: 0.92; }
   .chip {
     display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em;
     padding: 3px 8px; border-radius: 6px; margin-left: 8px; vertical-align: middle;
@@ -252,8 +253,15 @@
     font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
     color: var(--slate); margin: 0 0 12px;
   }
+  .text-toggle-btn {
+    border: none; background: none; color: var(--indigo); font-size: 12px; font-weight: 600;
+    cursor: pointer; padding: 0; margin-bottom: 10px;
+  }
+  .text-toggle-btn:hover { text-decoration: underline; }
   .table-scroll { overflow-x: auto; }
   .comparison-table { width: 100%; border-collapse: collapse; font-size: 13.5px; white-space: nowrap; }
+  .comparison-table .col-extra { display: none; }
+  .comparison-table.expanded .col-extra { display: table-cell; }
   .comparison-table th {
     text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
     letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
@@ -263,13 +271,9 @@
   .comparison-table td:first-child { text-align: left; }
   .comparison-table tr.row-limited td { color: var(--muted); font-weight: 500; }
   .comparison-table tr.row-limited td:first-child { color: var(--text); font-weight: 600; }
-  .channel-empty-card {
-    background: var(--panel); border: 1px dashed var(--border); border-radius: 12px;
-    padding: 20px 22px; display: flex; flex-direction: column; justify-content: center;
-    min-height: 100%;
-  }
-  .channel-empty-card h3 { font-size: 15px; margin: 0 0 6px; }
-  .channel-empty-card p { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin: 0; }
+  /* A secondary card with no activity at all skips the stat block entirely - no top
+     border/padding to divide from, unlike the "Limited but has some data" variant above it. */
+  .channel-card .muted-note.secondary-empty { border-top: none; padding-top: 0; margin-top: 2px; }
   .metric-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1216,26 +1220,26 @@
     `;
     return card;
   }
-  function buildMutedChannelCard(ch, m) {
+  // One shared card shape for any channel that isn't getting "full" treatment (Limited-data
+  // channels like Amazon, and genuinely-empty ones like a quiet Wholesale month) - previously
+  // two visually different card species (a solid muted card vs. a dashed, centered empty card)
+  // that didn't match each other's height/rhythm when stacked in the same sidebar column (real
+  // UI review finding, 2026-08-18). Same chrome either way; only the body differs based on
+  // whether there's a real number to show.
+  function buildSecondaryChannelCard(ch, m) {
     const card = document.createElement("div");
-    card.className = "card channel-card muted";
+    card.className = "card channel-card secondary";
     const chip = UNRELIABLE_CHANNELS.has(ch) ? `<span class="chip limited">Limited</span>` : "";
-    card.innerHTML = `
-      <h3>${ch}${chip}</h3>
-      <div class="revenue-share">${fmtPercent(m.revenue_share)} of revenue</div>
-      <div class="primary-stat" style="font-size:19px;color:var(--slate)">${fmtCurrency(m.net_sales)} <span style="font-size:11.5px;font-weight:500;color:var(--muted)">net sales</span></div>
-      <div class="primary-stat-label">${fmtNumber(m.orders)} orders</div>
-      <div class="muted-note">Limited data this period${infoIcon("limitedData")}</div>
-    `;
-    return card;
-  }
-  function buildEmptyChannelCard(ch) {
-    const card = document.createElement("div");
-    card.className = "channel-empty-card";
-    const note = ch === "Wholesale"
-      ? `No orders this period${infoIcon("wholesaleEmpty")}`
-      : `No ${ch} orders recorded this period.`;
-    card.innerHTML = `<h3>${ch}</h3><p>${note}</p>`;
+    const hasActivity = m.net_sales > 0 || m.orders > 0;
+    const body = hasActivity
+      ? `
+        <div class="revenue-share">${fmtPercent(m.revenue_share)} of revenue</div>
+        <div class="primary-stat" style="font-size:19px;color:var(--slate)">${fmtCurrency(m.net_sales)} <span style="font-size:11.5px;font-weight:500;color:var(--muted)">net sales</span></div>
+        <div class="primary-stat-label">${fmtNumber(m.orders)} orders</div>
+        <div class="muted-note">Limited data this period${infoIcon("limitedData")}</div>
+      `
+      : `<div class="muted-note secondary-empty">No orders this period${ch === "Wholesale" ? infoIcon("wholesaleEmpty") : ""}</div>`;
+    card.innerHTML = `<h3>${ch}${chip}</h3>${body}`;
     return card;
   }
   function renderChannelGrid(data, gridId, buildCard) {
@@ -1256,9 +1260,7 @@
       // asymmetric "wide cards + narrow sidebar" layout only makes sense with an actual mix.
       grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(240px, 1fr))";
       entries.forEach(({ ch, m, tier }) => {
-        if (tier === "full") grid.appendChild(buildCard(ch, m, priorPeriod, rangeLabel));
-        else if (tier === "empty") grid.appendChild(buildEmptyChannelCard(ch));
-        else grid.appendChild(buildMutedChannelCard(ch, m));
+        grid.appendChild(tier === "full" ? buildCard(ch, m, priorPeriod, rangeLabel) : buildSecondaryChannelCard(ch, m));
       });
       return;
     }
@@ -1267,11 +1269,13 @@
     full.forEach(({ ch, m }) => grid.appendChild(buildCard(ch, m, priorPeriod, rangeLabel)));
     const col = document.createElement("div");
     col.className = "channel-secondary-col";
-    secondary.forEach(({ ch, m, tier }) => {
-      col.appendChild(tier === "empty" ? buildEmptyChannelCard(ch) : buildMutedChannelCard(ch, m));
-    });
+    secondary.forEach(({ ch, m }) => col.appendChild(buildSecondaryChannelCard(ch, m)));
     grid.appendChild(col);
   }
+
+  // Persists across re-renders (range change, tab switch) so the reader's choice isn't reset
+  // every time the table redraws.
+  let comparisonTableExpanded = false;
 
   function renderChannelComparisonTable(data) {
     const dash = (v, fmt) => (v === null || v === undefined ? "—" : fmt(v));
@@ -1294,29 +1298,43 @@
           <td>${dash(m.contribution_pct, fmtPercent)}</td>
           <td>${fmtNumber(m.orders)}</td>
           <td>${dash(m.aov, fmtCurrency)}</td>
-          <td>${fmtNumber(m.units)}</td>
-          <td>${dash(m.discount_rate, fmtPercent)}</td>
-          <td>${dash(m.refund_rate, fmtPercent)}</td>
-          <td>${roasText}</td>
-          <td>${adsText}</td>
+          <td class="col-extra">${fmtNumber(m.units)}</td>
+          <td class="col-extra">${dash(m.discount_rate, fmtPercent)}</td>
+          <td class="col-extra">${dash(m.refund_rate, fmtPercent)}</td>
+          <td class="col-extra">${roasText}</td>
+          <td class="col-extra">${adsText}</td>
         </tr>
       `;
     }).join("");
+    // Reduces the default column count so the table fits at normal desktop widths without
+    // horizontal scroll - Units/Discount Rate/Refund Rate/ROAS/Ad Spend are one click away
+    // instead of always visible (real UI review finding, 2026-08-18: this table needed
+    // horizontal scroll at normal desktop widths with all 10 metric columns shown at once).
     document.getElementById("channel-comparison-table").innerHTML = `
+      <button type="button" id="comparison-columns-toggle" class="text-toggle-btn">
+        ${comparisonTableExpanded ? "Show fewer columns" : "Show more columns"}
+      </button>
       <div class="table-scroll">
-        <table class="comparison-table">
+        <table class="comparison-table ${comparisonTableExpanded ? "expanded" : ""}">
           <thead>
             <tr>
               <th>Channel</th><th>Net Sales</th><th>Contribution</th><th>Margin %</th>
-              <th>Orders${infoIcon("ordersUnits")}</th><th>AOV</th><th>Units${infoIcon("ordersUnits")}</th>
-              <th>Discount Rate${infoIcon("discountRate")}</th><th>Refund Rate${infoIcon("refundRate")}</th>
-              <th>ROAS${infoIcon("roas")}</th><th>Ad Spend${infoIcon("ads")}</th>
+              <th>Orders${infoIcon("ordersUnits")}</th><th>AOV</th>
+              <th class="col-extra">Units${infoIcon("ordersUnits")}</th>
+              <th class="col-extra">Discount Rate${infoIcon("discountRate")}</th>
+              <th class="col-extra">Refund Rate${infoIcon("refundRate")}</th>
+              <th class="col-extra">ROAS${infoIcon("roas")}</th>
+              <th class="col-extra">Ad Spend${infoIcon("ads")}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     `;
+    document.getElementById("comparison-columns-toggle").addEventListener("click", () => {
+      comparisonTableExpanded = !comparisonTableExpanded;
+      renderChannelComparisonTable(data);
+    });
   }
 
   let lastDashboardData = null;  // so the SKU Revenue card can reference DTC's Net Sales for
@@ -1360,9 +1378,9 @@
     document.getElementById("company-card").innerHTML = `
       <h2>Company Overview</h2>
       <div id="company-stats">
-        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}${runRateHtml}</div>
-        <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}</div>
-        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(netIncomeDisplay)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}</div>
+        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}${runRateHtml}<div class="stat-sparkline" id="sparkline-net-sales"></div></div>
+        <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}<div class="stat-sparkline" id="sparkline-contribution"></div></div>
+        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(netIncomeDisplay)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}<div class="stat-sparkline" id="sparkline-net-income"></div></div>
       </div>
       <div id="contribution-note">Contribution excludes overhead — Net Income above is the real bottom line.</div>
       <div class="metric-row">
@@ -1384,6 +1402,41 @@
     document.getElementById("dashboard-caveat").innerHTML = data.caveat
       ? `Amazon &amp; Wholesale data quality note${infoIcon("limitedData")}`
       : "";
+
+    // company-stats was just rebuilt via innerHTML above, wiping out any sparkline that was
+    // already drawn - redraw immediately if trend data has already loaded (true on every
+    // range-change re-render after the first page load). If trends haven't loaded yet (only
+    // possible on the very first render), loadTrends' own success handler draws them once
+    // they're in.
+    if (lastTrendsPeriods) renderKpiSparklines(lastTrendsPeriods);
+  }
+
+  // Minimal inline trend indicator for a KPI card - no axis/gridlines/labels, just the shape of
+  // the last 6 months. Deliberately not clickable/hoverable like the full Trends charts below;
+  // it's a glance-only signal, and the full interactive chart is one scroll away for anyone who
+  // wants the real numbers (real UI review finding, 2026-08-18: KPI cards showed just a number +
+  // delta with no visual trend until scrolling down to the separate Trends section).
+  function renderSparkline(containerId, values, color) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const width = 110, height = 28;
+    const min = Math.min(...values), max = Math.max(...values);
+    const range = max - min || 1;
+    const xStep = values.length > 1 ? width / (values.length - 1) : 0;
+    const points = values.map((v, i) => [i * xStep, height - 2 - ((v - min) / range) * (height - 4)]);
+    const pathD = points.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+    const [lastX, lastY] = points[points.length - 1];
+    container.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:${height}px;display:block;">
+        <path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" />
+        <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.25" fill="${color}" />
+      </svg>
+    `;
+  }
+  function renderKpiSparklines(periods) {
+    renderSparkline("sparkline-net-sales", periods.map((p) => p.company.net_sales), "var(--accent)");
+    renderSparkline("sparkline-contribution", periods.map((p) => p.company.contribution), "var(--indigo)");
+    renderSparkline("sparkline-net-income", periods.map((p) => p.company.net_income), "var(--indigo)");
   }
 
   // Retries a fetch on failure (network error or 502/503/504) with a short delay - covers the
@@ -1778,6 +1831,7 @@
         return;
       }
       lastTrendsPeriods = data.periods;
+      renderKpiSparklines(data.periods); // company-stats is already on screen by now (dashboard loads first)
       trendsStatusOverview.style.display = "none";
       trendsGridOverview.style.display = "grid"; // must be visible before render*Chart() measures width
       renderTrendsOverview(data.periods);
