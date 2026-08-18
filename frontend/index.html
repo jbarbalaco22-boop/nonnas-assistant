@@ -1090,6 +1090,12 @@
       renderDashboard(data);
       dashboardStatus.style.display = "none";
       dashboardContent.style.display = "block";
+      // Auto-run on every load/range change, same as every other section on this page -
+      // fired only after renderDashboard sets lastDashboardData, since SKU Revenue's inline
+      // shipping-exclusion note reads it. "Since Inception" stays manual-only, since it's a
+      // different question ("total ever", not "this period") that doesn't change with the range.
+      loadSkuRevenue();
+      loadSkuUnitsPeriod();
     } catch (e) {
       dashboardStatus.textContent = "Couldn't reach the server — check your connection and try again.";
       dashboardStatus.className = "error";
@@ -1644,7 +1650,7 @@
         return;
       }
       renderSkuUnitsPeriod(data);
-      status.textContent = `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.pulled_at)}`;
+      status.textContent = `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.as_of)}`;
     } catch (e) {
       status.textContent = "Couldn't reach the server — check your connection and try again.";
       status.className = "error";
