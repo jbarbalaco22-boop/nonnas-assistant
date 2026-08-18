@@ -834,7 +834,7 @@
     }
   }
 
-  function showApp(username) {
+  async function showApp(username) {
     loginScreen.style.display = "none";
     appScreen.style.display = "flex";
     signedInAs.innerHTML = `Signed in as ${username} <button id="signout-btn">Sign out</button>`;
@@ -844,10 +844,15 @@
     });
     initTabs();
     initRangeControls();
-    loadDashboard();
-    loadTrends(); // independent of the date-range dashboard above - always the trailing 6 months
-    loadCashSnapshot(); // also independent of the date range - always "as of today"
     renderObligationsList();
+    // Sequenced, not fired all at once: dashboard/trends/cash-snapshot are each already slow
+    // (multiple sequential QBO/Shopify pulls internally), and firing all three simultaneously on
+    // page load was overloading the backend enough to intermittently 502 - each of these three
+    // succeeded reliably in isolation but not when run concurrently on Render's single backend
+    // process. loadDashboard() already sequences the SKU calls after itself the same way.
+    await loadDashboard();
+    await loadTrends(); // independent of the date-range dashboard above - always the trailing 6 months
+    loadCashSnapshot(); // also independent of the date range - always "as of today"
   }
 
   // ---- Date range presets ----
