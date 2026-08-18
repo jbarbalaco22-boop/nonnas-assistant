@@ -305,27 +305,24 @@ def test_sku_units_live_multiplies_pack_size_into_units(monkeypatch):
 
 
 def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
+    """Delegates to get_sku_units_for_period with start_date=2020-01-01 - the live window is
+    SHOPIFY_LIVE_LOOKBACK_DAYS wide (not "current month only"), so a month whose end falls on or
+    after the live boundary comes from the live pull, not the reference CSV."""
     reference = {
         "2024-09": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 687, "note": ""},
         "2024-10": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 28, "note": ""},
-        "2026-07": {"DTC": 234, "TikTok": 220, "Amazon": 390, "Wholesale": 12, "total_units": 856, "note": ""},
-        # Current month's own CSV row must be ignored - the live pull replaces it, since a CSV
-        # snapshot can be stale mid-month.
-        "2026-08": {"DTC": 5, "TikTok": 0, "Amazon": 0, "Wholesale": 0, "total_units": 5, "note": "stale snapshot"},
+        # 2026-06's end (06-30) falls after the ~2026-06-24 live boundary (today=08-18, 55 days
+        # back), so it must NOT be used as a reference month - it's covered by the live pull.
+        "2026-06": {"DTC": 100, "TikTok": 0, "Amazon": 0, "Wholesale": 0, "total_units": 100, "note": ""},
     }
     monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: reference)
-    # A second SKU is already registered (active_since 2026-08-14) - every historical month
-    # here ends before that date, so it must not affect the historical attribution at all.
     monkeypatch.setattr(
         handlers, "load_sku_map",
-        lambda: {
-            "OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "status": "active"},
-            "OO-OO-ORG-501": {"name": "3-Pack", "status": "active", "active_since": "2026-08-14"},
-        },
+        lambda: {"OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "product": "Nonna's Olive Oil (500mL Original)", "status": "active"}},
     )
 
     def fake_live(shopify, start, end):
-        assert start == "2026-08-01" and end == "2026-08-18"
+        assert start == "2026-06-24" and end == "2026-08-18"
         return {
             "start_date": start, "end_date": end, "pulled_at": "x",
             "skus": {"OO-OO-ORG-500": {
@@ -341,11 +338,42 @@ def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
     result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 8, 18))
 
-    # historical: 687 + 28 + 856 = 1571 (2026-08's own stale row excluded); live: 55+24+90=169
-    assert result["skus"]["OO-OO-ORG-500"]["units_to_date"] == 1571 + 169
-    assert result["reference_through"] == "2026-07"
-    assert result["live_from"] == "2026-08-01"
+    # historical: 687 + 28 = 715 (2026-06 excluded, covered by live instead); live: 169
+    assert result["skus"]["OO-OO-ORG-500"]["units_to_date"] == 715 + 169
+    assert result["reference_through"] == "2024-10"
+    assert result["live_from"] == "2026-06-24"
     assert result["live_to"] == "2026-08-18"
+    # Honest about what's NOT covered by either source, unlike the old implementation which
+    # silently ignored anything before whatever the reference file happened to contain: nothing
+    # exists for 2020-01-01 through 2024-08-31 (before the earliest reference month), and nothing
+    # for 2024-11-01 through the live boundary (no reference month in between, in this scenario).
+    assert {"start": "2020-01-01", "end": "2024-08-31"} in result["gap_days"]
+    assert {"start": "2024-11-01", "end": "2026-06-23"} in result["gap_days"]
+
+
+def test_sku_units_to_date_reports_gap_for_a_sku_missed_by_the_old_narrow_window(monkeypatch):
+    """Regression for the real audit bug (2026-08-18): a SKU with sales in a month that's both
+    too recent for the (ambiguous, multi-SKU) reference CSV AND outside the live-retrievable
+    window falls into a real gap - it must show up there, not be silently absent from the
+    result entirely."""
+    reference = {}  # nothing usable in the reference file for this scenario
+    monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: reference)
+    monkeypatch.setattr(
+        handlers, "load_sku_map",
+        lambda: {"OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "product": "Nonna's Olive Oil (500mL Original)", "status": "active"}},
+    )
+    monkeypatch.setattr(
+        handlers, "get_sku_units_live",
+        lambda shopify, start, end: {"start_date": start, "end_date": end, "pulled_at": "x", "skus": {}},
+    )
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 8, 18))
+
+    # 2020-01-01 through the live boundary (~2026-06-24), with nothing in the reference file,
+    # is one big reported gap - not silently dropped.
+    assert len(result["gap_days"]) == 1
+    assert result["gap_days"][0]["start"] == "2020-01-01"
 
 
 def test_sku_units_to_date_excludes_month_ambiguous_by_its_own_end(monkeypatch):
@@ -355,14 +383,16 @@ def test_sku_units_to_date_excludes_month_ambiguous_by_its_own_end(monkeypatch):
     became a "closed" reference month, it would need per-day granularity this CSV doesn't have -
     the safe choice is to drop it, not misattribute it wholesale to either SKU."""
     reference = {
-        "2026-08": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 500, "note": ""},
+        # Old enough to be a genuine reference-eligible month (well before the live boundary),
+        # but still ambiguous because a second SKU was active by its own end date.
+        "2024-01": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 500, "note": ""},
     }
     monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: reference)
     monkeypatch.setattr(
         handlers, "load_sku_map",
         lambda: {
             "OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "status": "active"},
-            "OO-OO-ORG-501": {"name": "3-Pack", "status": "active", "active_since": "2026-08-14"},
+            "OO-OO-ORG-501": {"name": "3-Pack", "status": "active", "active_since": "2020-01-01"},
         },
     )
     monkeypatch.setattr(
@@ -371,8 +401,7 @@ def test_sku_units_to_date_excludes_month_ambiguous_by_its_own_end(monkeypatch):
     )
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
-    # today in September so August is a "closed" historical month subject to the fallback check
-    result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 9, 1))
+    result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 8, 18))
 
     assert result["skus"] == {}
 

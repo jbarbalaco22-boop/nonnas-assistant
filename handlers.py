@@ -197,70 +197,36 @@ def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) 
 
 
 def get_sku_units_to_date(shopify: ShopifyContext, today: date | None = None) -> dict:
-    """Total units sold per SKU since inception, combining two sources - the same "closed
-    historical months are a trusted reference, the current month is always live" split used
-    elsewhere in this codebase (e.g. get_monthly_trend):
+    """Total units sold per SKU since inception - delegates to get_sku_units_for_period with
+    start_date fixed well before any real company history (2020-01-01), since "since inception"
+    is just "the period from the beginning of time through today." Reuses that function's
+    combining logic (reference CSV for months fully before the live-retrievable boundary, a live
+    Shopify pull for everything from the boundary through today, explicit gap_days for anything
+    covered by neither) instead of duplicating it with a narrower, ad hoc window.
 
-    1. channel_units_by_month.csv's total_units, summed across every month strictly before the
-       current one. This is necessary, not just a fallback: confirmed live (2026-08-18) that
-       Shopify's own order API returns zero results for known-real historical months (Sept 2024,
-       April 2025) that the CSV correctly has units for - Shopify's live API has some retention
-       limit this store is well past for its early history, so there is no way to live-pull that
-       far back. The CSV is the only source for it.
-    2. get_sku_units_live for [first of the current month, today] - real, current-month Shopify
-       data, correctly SKU-attributed via Shopify's own per-line SKU field (no guessing needed
-       here, unlike the QBO revenue side - Shopify has always tracked this).
-
-    Each historical month's total_units is attributed to whichever SKU was the registry's sole
-    active one as of that month's own end date (nonnas_shared.connectors.sku_financials'
-    sole_active_sku_as_of - the same per-transaction-date rule used on the revenue side, and for
-    the same reason: OO-OO-ORG-501 going active mid-August 2026 must not retroactively make
-    2024/2025 months ambiguous). A month where two-plus SKUs were already active by its end is
-    excluded rather than guessed at - conservative, matching the "never guess" principle
-    throughout this module. The live current-month portion is already properly SKU-bucketed via
-    Shopify's own per-line SKU field, so it needs no fallback at all.
+    Fixed a real bug (live audit finding, 2026-08-18): the previous implementation only
+    live-pulled the CURRENT calendar month. A SKU whose only sales fell in an earlier month that
+    ALSO had 2+ SKUs already registered active (so sole_active_sku_as_of couldn't safely
+    attribute that month's CSV total to any one SKU) was silently missing from "Since Inception"
+    entirely, even though the exact same period showed up correctly under a wider "This Period"
+    pull (confirmed live: OO-OO-ORG-502 and NONNA-COOKBOOK-001 both had real August-adjacent
+    units in get_sku_units_for_period's YTD result but were absent here). Reusing
+    SHOPIFY_LIVE_LOOKBACK_DAYS's wider live window closes that gap for anything still
+    live-retrievable; anything older surfaces in gap_days instead of being silently dropped.
     """
     today = today or date.today()
-    current_month = today.strftime("%Y-%m")
-    reference = load_channel_units_by_month()
-    sku_registry = load_sku_map()
-
-    skus: dict = {}
-    for month, m in reference.items():
-        if month >= current_month or m["total_units"] is None:
-            continue
-        year, mo = (int(part) for part in month.split("-"))
-        month_end = date(year, mo, calendar.monthrange(year, mo)[1]).isoformat()
-        fallback_sku = sole_active_sku_as_of(sku_registry, month_end)
-        if fallback_sku is None:
-            continue
-        # Every historical month predates any pack-size SKU's launch (see sole_active_sku_as_of),
-        # so the CSV's total_units is already a real bottle count - no pack_size multiplier needed.
-        info = sku_registry.get(fallback_sku, {})
-        bucket = skus.setdefault(fallback_sku, {
-            "name": info.get("name"),
-            "product": info.get("product") or info.get("name") or fallback_sku,
-            "units_to_date": 0,
-        })
-        bucket["units_to_date"] += m["total_units"]
-
-    reference_through = max((m for m in reference if m < current_month), default=None)
-
-    live = get_sku_units_live(shopify, f"{current_month}-01", today.isoformat())
-    for sku, entry in live["skus"].items():
-        bucket = skus.setdefault(sku, {
-            "name": entry["name"],
-            "product": entry["product"],
-            "units_to_date": 0,
-        })
-        bucket["units_to_date"] += entry["units"]  # pack_size-adjusted, not raw line quantity
-
+    result = get_sku_units_for_period(shopify, "2020-01-01", today.isoformat(), today=today)
+    skus = {
+        sku: {"name": m["name"], "product": m["product"], "units_to_date": m["units"]}
+        for sku, m in result["skus"].items()
+    }
     return {
         "skus": skus,
-        "reference_through": reference_through,
-        "live_from": live["start_date"],
-        "live_to": live["end_date"],
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "reference_through": max(result["reference_months_used"], default=None),
+        "live_from": result["live_from"],
+        "live_to": result["live_to"],
+        "gap_days": result["gap_days"],
+        "as_of": result["as_of"],
     }
 
 
