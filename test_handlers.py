@@ -525,23 +525,29 @@ def test_get_cash_snapshot_computes_cash_basis_burn_and_runway_not_net_income(mo
     """The whole point of this tab: burn/runway come from the actual change in cash balance,
     not from accrual Net Income - this test uses deliberately different values for the two so a
     regression that swaps one for the other would fail loudly."""
+    bank_prefixes = ["11100 Chase Operating Bank Account"]
     monkeypatch.setattr(
         handlers, "load_qbo_account_map",
-        lambda: {"bank_cash": ["11100 Chase Operating Bank Account"]},
+        lambda: {"bank_cash": bank_prefixes, "financing": {"accounts": []}},
     )
     today = date(2026, 8, 18)
     lookback_start = today - timedelta(days=90)
-    known_balances = {today: 9000.0, lookback_start: 9900.0}
+    # Cumulative balance is 9900.0 through lookback_start, then a 900.0 outflow lands inside the
+    # 90-day window - so balance_as_of(lookback_start)=9900.0, balance_as_of(today)=9000.0.
+    bank_txns = [
+        {"date": "2020-01-01", "amount": 9900.0},
+        {"date": (lookback_start + timedelta(days=5)).isoformat(), "amount": -900.0},
+    ]
 
-    def fake_balance(realm_id, access_token, prefixes, as_of_date, environment="production"):
-        return known_balances.get(as_of_date, 5000.0)  # trend-point calls get an arbitrary value
+    def fake_multi(realm_id, access_token, prefixes, start, end, environment="production"):
+        return bank_txns if prefixes == bank_prefixes else []
 
-    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_balance", fake_balance)
+    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_transactions_multi", fake_multi)
     monkeypatch.setattr(
         handlers.shared_qbo, "fetch_profit_and_loss_by_class",
         lambda realm_id, access_token, start, end, environment="production": {
             "Income": {"41100 Product Revenue": {"Total": 1000.0}},
-            "Expenses": {"General Admin": {"Total": 2000.0}},
+            "Expenses": {"84100 Legal Fees": {"Total": 2000.0}},
         },
     )
     monkeypatch.setattr(
@@ -558,28 +564,81 @@ def test_get_cash_snapshot_computes_cash_basis_burn_and_runway_not_net_income(mo
     assert result["cash_balance"] == 9000.0
     assert result["cash_balance_90d_ago"] == 9900.0
     assert result["net_cash_change_90d"] == -900.0
+    assert result["financing_inflows_90d"] == 0.0
+    assert result["operating_cash_change_90d"] == -900.0
     assert result["monthly_burn"] == 300.0
     assert result["runway_months"] == 30.0
     assert result["net_income_90d"] == -1000.0  # 1000 income - 2000 expenses - deliberately
     # different from the cash-basis numbers above, confirming they're computed independently
+    assert result["overhead_accounts"] == [{"label": "84100 Legal Fees", "monthly_avg": 2000.0 / 3}]
+    assert result["overhead_monthly_total"] == 2000.0 / 3
     assert len(result["balance_trend"]) == 6
     assert result["known_payroll"]["amount"] == 5391.65
     assert result["known_payroll"]["cadence_days"] == 14
 
 
-def test_get_cash_snapshot_runway_is_none_when_not_burning_cash(monkeypatch):
+def test_get_cash_snapshot_excludes_financing_inflows_from_burn(monkeypatch):
+    """The reason this tab exists in its current form: a raw balance-change burn calc gets
+    diluted by equity/SAFE investment inflows, making the business look healthier than it is.
+    financing_inflows_90d must be subtracted before computing monthly_burn/runway_months."""
+    bank_prefixes = ["11100 Chase Operating Bank Account"]
+    financing_prefixes = ["34000 Additional Paid In Capital"]
+    today = date(2026, 8, 18)
+    lookback_start = today - timedelta(days=90)
+    # Combined balance only fell $900 over 90 days, but that includes a $5,000 SAFE investment -
+    # true operating cash change is -$5,900, not -$900.
+    bank_txns = [
+        {"date": "2020-01-01", "amount": 9900.0},
+        {"date": (lookback_start + timedelta(days=5)).isoformat(), "amount": -900.0},
+    ]
+    financing_txns = [{"date": (lookback_start + timedelta(days=10)).isoformat(), "amount": 5000.0}]
+
+    def fake_multi(realm_id, access_token, prefixes, start, end, environment="production"):
+        if prefixes == bank_prefixes:
+            return bank_txns
+        if prefixes == financing_prefixes:
+            return financing_txns
+        return []
+
     monkeypatch.setattr(
         handlers, "load_qbo_account_map",
-        lambda: {"bank_cash": ["11100 Chase Operating Bank Account"]},
+        lambda: {"bank_cash": bank_prefixes, "financing": {"accounts": financing_prefixes}},
+    )
+    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_transactions_multi", fake_multi)
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_profit_and_loss_by_class",
+        lambda realm_id, access_token, start, end, environment="production": {},
+    )
+    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_transactions", lambda *a, **k: [])
+
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_cash_snapshot(fake_qbo, today=today)
+
+    assert result["net_cash_change_90d"] == -900.0
+    assert result["financing_inflows_90d"] == 5000.0
+    assert result["operating_cash_change_90d"] == -5900.0
+    assert result["monthly_burn"] == 5900.0 / 3
+    assert result["runway_months"] == 9000.0 / (5900.0 / 3)
+
+
+def test_get_cash_snapshot_runway_is_none_when_not_burning_cash(monkeypatch):
+    bank_prefixes = ["11100 Chase Operating Bank Account"]
+    monkeypatch.setattr(
+        handlers, "load_qbo_account_map",
+        lambda: {"bank_cash": bank_prefixes, "financing": {"accounts": []}},
     )
     today = date(2026, 8, 18)
     lookback_start = today - timedelta(days=90)
     # Cash grew, not shrank, over the trailing 90 days.
-    known_balances = {today: 10000.0, lookback_start: 9000.0}
-    monkeypatch.setattr(
-        handlers.shared_qbo, "fetch_gl_account_balance",
-        lambda realm_id, access_token, prefixes, as_of_date, environment="production": known_balances.get(as_of_date, 5000.0),
-    )
+    bank_txns = [
+        {"date": "2020-01-01", "amount": 9000.0},
+        {"date": (lookback_start + timedelta(days=5)).isoformat(), "amount": 1000.0},
+    ]
+
+    def fake_multi(realm_id, access_token, prefixes, start, end, environment="production"):
+        return bank_txns if prefixes == bank_prefixes else []
+
+    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_transactions_multi", fake_multi)
     monkeypatch.setattr(
         handlers.shared_qbo, "fetch_profit_and_loss_by_class",
         lambda realm_id, access_token, start, end, environment="production": {},

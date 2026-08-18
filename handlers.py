@@ -6,6 +6,7 @@ import calendar
 import glob
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 from nonnas_shared.config import load_channel_units_by_month, load_qbo_account_map, load_sku_map
@@ -637,56 +638,103 @@ def _estimate_next_payroll(qbo: QboContext, today: date) -> dict | None:
 
 
 def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
-    """Cash-basis snapshot for the Cash & Runway tab: combined bank balance, burn rate and
-    runway computed from the ACTUAL change in that balance (not accrual Net Income - see below),
-    plus a trailing 6-month balance trend and the one recurring obligation this business
-    currently has a reliable automated signal for (founder payroll).
+    """Cash-basis snapshot for the Cash & Runway tab: combined bank balance, an OPERATING burn
+    rate and runway (see below), a trailing 6-month balance trend, a full breakdown of recurring
+    fixed costs (Overhead accounts), and the one recurring obligation with a reliable automated
+    timing signal (founder payroll).
 
-    Why cash-basis, not Net Income, for burn/runway: the whole reason this tab exists is that
-    Net Income doesn't reflect cash reality - inventory purchases hit cash the day they're paid
-    for, not when later recognized as COGS. Confirmed live (2026-08-18) this genuinely matters
-    here: the trailing 90 days had accrual Net Income of -$81,448.59 but actual cash only fell
-    $38,728.76 - a $42,719.83 gap. Net Income is still returned, as a supporting comparison
-    figure, never as the burn number itself.
+    Why cash-basis, not Net Income, for burn/runway: Net Income doesn't reflect cash reality -
+    inventory purchases hit cash the day they're paid for, not when later recognized as COGS.
+    Confirmed live (2026-08-18): the trailing 90 days had accrual Net Income of -$81,448.59 but
+    actual cash only fell $38,728.76 - a $42,719.83 gap. Net Income is still returned, as a
+    supporting comparison figure, never as the burn number itself.
+
+    Why "operating" burn, not raw cash-balance change: raw balance movement also includes
+    financing activity (equity/SAFE investments, loan draws) - qbo_account_map.json's
+    "financing" list. Confirmed live (2026-08-18): two real SAFE investments totaling $50,000
+    (Harry Lott $25,000 on 2026-07-20, Brad Klontz $25,000 on 2026-08-11) landed in the same
+    90-day window used here, both correctly posted to "34000 Additional Paid In Capital". Left
+    in, that $50,000 of new investor money makes burn look roughly HALF what it actually is -
+    real cash in the bank, but not revenue covering costs, so it shouldn't make runway look
+    longer. monthly_burn/runway_months below are computed on operating_cash_change_90d (net
+    cash change minus financing_inflows_90d); net_cash_change_90d and financing_inflows_90d are
+    both still returned so the raw, unadjusted numbers stay visible, not just implied.
 
     Combined cash balance uses qbo_account_map.json's "bank_cash" list (the 2 operating accounts
-    + the high-yield account, per the business) via fetch_gl_account_balance - GeneralLedger with
-    an explicit end_date, not BalanceSheet (see that function's docstring for why). Cross-checked
-    live against Account.CurrentBalance for the as-of-today case: exact match.
+    + the high-yield account, per the business). Every balance checkpoint needed here (today,
+    90-days-ago, and 6 monthly trend points) is derived from a SINGLE
+    fetch_gl_account_transactions_multi pull (2020-01-01 through today) via local cumulative
+    summation, rather than one fetch_gl_account_balance call per checkpoint - confirmed
+    equivalent to the penny (see that function's docstring), and roughly 8x fewer QBO report
+    calls, which is what made this endpoint slow (each full-history GeneralLedger pull took
+    ~3-5s; 8 of them serially was 20s+).
 
-    Known obligations: this business doesn't currently track upcoming vendor bills/POs as
-    forward-looking commitments (confirmed with the business 2026-08-18) - real Bill records do
-    exist in QBO, but their due dates consistently land the same day as, or one day after, the
-    transaction date, indicating they're entered when paid, not planned ahead of time. So the
-    only obligation with a reliable automated signal here is founder payroll - everything else
-    is a manual-entry list on the frontend, not pulled by this function.
+    Overhead (recurring fixed costs): channel_financials.compute_overhead_by_account walks the
+    same 90-day P&L already pulled for net_income_90d and returns every Expenses-section account
+    not already claimed by a channel-level bucket (cogs/three_pl/ads/fees/other_marketing) -
+    payroll, payroll taxes, benefits, software, legal, accounting, bank fees, etc. Shown as a
+    trailing-90-day monthly average per account, since these fluctuate some but are broadly
+    fixed - not tied to sales volume the way ads/COGS are.
 
-    Several sequential QBO calls (balance x2, P&L, 6 monthly balance points, payroll history) -
-    slower than the other live tools, same "on-demand, not polled" tradeoff already accepted for
-    SKU Revenue.
+    Known obligations beyond Overhead: this business doesn't currently track upcoming vendor
+    bills/POs as forward-looking commitments (confirmed with the business 2026-08-18) - real
+    Bill records exist in QBO, but their due dates consistently land the same day as, or one day
+    after, the transaction date, indicating they're entered when paid, not planned ahead of
+    time. So beyond the Overhead breakdown and founder payroll's next-date estimate, anything
+    else is a manual-entry list on the frontend, not pulled by this function.
     """
     today = today or date.today()
     lookback_start = today - timedelta(days=90)
-    account_prefixes = load_qbo_account_map()["bank_cash"]
+    account_map = load_qbo_account_map()
+    bank_prefixes = account_map["bank_cash"]
+    financing_prefixes = account_map.get("financing", {}).get("accounts", [])
 
-    balance_today = shared_qbo.fetch_gl_account_balance(
-        qbo.realm_id, qbo.access_token, account_prefixes, today, environment=qbo.environment,
-    )
-    balance_90d_ago = shared_qbo.fetch_gl_account_balance(
-        qbo.realm_id, qbo.access_token, account_prefixes, lookback_start, environment=qbo.environment,
-    )
+    # The four QBO pulls below don't depend on each other, so they run concurrently rather than
+    # serially - this endpoint was slow enough on Render (~23s) to be worth it even after
+    # collapsing the balance-trend loop into a single pull (see docstring).
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        bank_txns_future = pool.submit(
+            shared_qbo.fetch_gl_account_transactions_multi,
+            qbo.realm_id, qbo.access_token, bank_prefixes, date(2020, 1, 1), today, environment=qbo.environment,
+        )
+        financing_future = pool.submit(
+            shared_qbo.fetch_gl_account_transactions_multi,
+            qbo.realm_id, qbo.access_token, financing_prefixes, lookback_start, today, environment=qbo.environment,
+        ) if financing_prefixes else None
+        pl_future = pool.submit(
+            shared_qbo.fetch_profit_and_loss_by_class,
+            qbo.realm_id, qbo.access_token, lookback_start, today, environment=qbo.environment,
+        )
+        payroll_future = pool.submit(_estimate_next_payroll, qbo, today)
+
+        all_bank_txns = bank_txns_future.result()
+        financing_txns = financing_future.result() if financing_future else []
+        pl_data = pl_future.result()
+        known_payroll = payroll_future.result()
+
+    def _balance_as_of(as_of: date) -> float:
+        as_of_iso = as_of.isoformat()
+        return sum(t["amount"] for t in all_bank_txns if t["date"] <= as_of_iso)
+
+    balance_today = _balance_as_of(today)
+    balance_90d_ago = _balance_as_of(lookback_start)
     net_cash_change_90d = balance_today - balance_90d_ago
-    monthly_burn = -net_cash_change_90d / 3  # positive = burning cash, negative = growing
+
+    financing_inflows_90d = sum(t["amount"] for t in financing_txns)
+    operating_cash_change_90d = net_cash_change_90d - financing_inflows_90d
+    monthly_burn = -operating_cash_change_90d / 3  # positive = burning cash, negative = growing
     runway_months = (balance_today / monthly_burn) if monthly_burn > 0 else None
 
-    pl_data = shared_qbo.fetch_profit_and_loss_by_class(
-        qbo.realm_id, qbo.access_token, lookback_start, today, environment=qbo.environment,
-    )
     net_income_90d = channel_financials.compute_net_income(pl_data)["net_income"]
+    overhead_accounts = [
+        {"label": r["label"], "monthly_avg": r["amount"] / 3}
+        for r in channel_financials.compute_overhead_by_account(pl_data, account_map)
+    ]
+    overhead_monthly_total = sum(r["monthly_avg"] for r in overhead_accounts)
 
     # Trailing 6-month balance trend - same "6 months ending this month" window get_monthly_trend
-    # uses elsewhere; one GL pull per month-end (current month uses today, not month-end, same as
-    # get_monthly_trend's "always in progress" current period).
+    # uses elsewhere; every point comes from the same all_bank_txns pull above, not a separate
+    # GL call per month.
     first_of_this_month = today.replace(day=1)
     y, m = first_of_this_month.year, first_of_this_month.month
     month_starts = []
@@ -705,10 +753,9 @@ def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
         else:
             last_day = calendar.monthrange(month_start.year, month_start.month)[1]
             as_of = date(month_start.year, month_start.month, last_day)
-        balance = shared_qbo.fetch_gl_account_balance(
-            qbo.realm_id, qbo.access_token, account_prefixes, as_of, environment=qbo.environment,
-        )
-        balance_trend.append({"month": month_start.isoformat()[:7], "as_of": as_of.isoformat(), "balance": balance})
+        balance_trend.append({
+            "month": month_start.isoformat()[:7], "as_of": as_of.isoformat(), "balance": _balance_as_of(as_of),
+        })
 
     return {
         "as_of": today.isoformat(),
@@ -716,10 +763,14 @@ def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
         "cash_balance_90d_ago": balance_90d_ago,
         "lookback_start": lookback_start.isoformat(),
         "net_cash_change_90d": net_cash_change_90d,
+        "financing_inflows_90d": financing_inflows_90d,
+        "operating_cash_change_90d": operating_cash_change_90d,
         "monthly_burn": monthly_burn,
         "runway_months": runway_months,
         "net_income_90d": net_income_90d,
+        "overhead_accounts": overhead_accounts,
+        "overhead_monthly_total": overhead_monthly_total,
         "balance_trend": balance_trend,
-        "known_payroll": _estimate_next_payroll(qbo, today),
+        "known_payroll": known_payroll,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

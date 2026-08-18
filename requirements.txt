@@ -8,4 +8,4 @@ uvicorn>=0.30
 # exact commit (not just the repo URL) so Render's build cache actually picks up shared-repo
 # changes - an unpinned git+https URL let a real deploy run for a while against a stale install
 # after a nonnas-shared-only push, since nothing in this repo's requirements.txt had changed.
-git+https://github.com/jbarbalaco22-boop/nonnas-shared.git@8cba755c40158a9e95ae05a6b646ef2895531b1b
+git+https://github.com/jbarbalaco22-boop/nonnas-shared.git@77dc4de06838affe2ee60dcbcc05da16fb11c6a8

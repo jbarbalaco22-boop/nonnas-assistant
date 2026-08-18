@@ -168,10 +168,11 @@ def sku_units_to_date_endpoint(user: str = Depends(verify_token)) -> dict:
 
 @app.get("/cash-snapshot")
 def cash_snapshot_endpoint(user: str = Depends(verify_token)) -> dict:
-    """Cash & Runway tab data - combined bank balance, cash-basis burn rate/runway, a trailing
-    6-month balance trend, and the known founder payroll obligation. See get_cash_snapshot's
-    docstring for why this is cash-basis, not accrual Net Income, and why "known obligations"
-    beyond payroll isn't pulled here (no reliable automated source - the frontend keeps a
+    """Cash & Runway tab data - combined bank balance, cash-basis OPERATING burn rate/runway
+    (excludes financing activity like equity/SAFE investments - see get_cash_snapshot's
+    docstring for why), a trailing 6-month balance trend, a full recurring-fixed-cost (Overhead)
+    breakdown by account, and the known founder payroll obligation. Obligations beyond Overhead
+    and payroll aren't pulled here (no reliable automated source - the frontend keeps a
     manual-entry list for that instead). No date params - always "as of today," like
     /sku-units-to-date."""
     qbo = _get_qbo_context()
