@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from assistant import _get_qbo_context, _get_shopify_context, ask
 from auth import verify_token
-from handlers import get_dashboard_data
+from handlers import get_dashboard_data, get_monthly_trend
 
 logger = logging.getLogger("nonnas_assistant")
 app = FastAPI(title="Harvest")
@@ -84,6 +84,25 @@ def dashboard_endpoint(
     except Exception as e:
         logger.exception("dashboard failed for %s to %s", start_date, end_date)
         raise HTTPException(status_code=502, detail=f"Failed to load dashboard: {e}") from e
+
+
+@app.get("/trends")
+def trends_endpoint(
+    months: int = 6,
+    user: str = Depends(verify_token),
+) -> dict:
+    """Monthly trend data for the last `months` calendar months (including the current,
+    in-progress one), reusing get_dashboard_data per month so trend numbers always match what
+    the single-period dashboard shows for that same range. Several sequential QBO/Shopify
+    pulls, so slower than /dashboard - the frontend loads this after the main dashboard, not
+    blocking it."""
+    qbo = _get_qbo_context()
+    shopify = _get_shopify_context()
+    try:
+        return {"periods": get_monthly_trend(qbo, shopify, months)}
+    except Exception as e:
+        logger.exception("trends failed for last %s months", months)
+        raise HTTPException(status_code=502, detail=f"Failed to load trends: {e}") from e
 
 
 @app.post("/ask", response_model=AskResponse)

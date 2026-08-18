@@ -68,3 +68,38 @@ def test_dashboard_no_revenue_gives_none_company_pct(monkeypatch):
 
     result = handlers.get_dashboard_data(None, None, "2026-08-01", "2026-08-17")
     assert result["company"]["contribution_pct"] is None
+
+
+def test_monthly_trend_calls_dashboard_once_per_month_oldest_first(monkeypatch):
+    from datetime import date
+
+    calls = []
+
+    def fake_dashboard(qbo, shopify, start, end):
+        calls.append((start, end))
+        return {"start_date": start, "end_date": end}
+
+    monkeypatch.setattr(handlers, "get_dashboard_data", fake_dashboard)
+
+    result = handlers.get_monthly_trend(None, None, months=3, today=date(2026, 8, 17))
+
+    assert len(result) == 3
+    assert calls[0] == ("2026-06-01", "2026-06-30")
+    assert calls[1] == ("2026-07-01", "2026-07-31")
+    assert calls[2] == ("2026-08-01", "2026-08-17")  # current month, partial - ends today
+
+
+def test_monthly_trend_crosses_year_boundary_correctly(monkeypatch):
+    from datetime import date
+
+    calls = []
+    monkeypatch.setattr(
+        handlers, "get_dashboard_data",
+        lambda qbo, shopify, start, end: calls.append((start, end)) or {"start_date": start, "end_date": end},
+    )
+
+    handlers.get_monthly_trend(None, None, months=3, today=date(2026, 1, 15))
+
+    assert calls[0] == ("2025-11-01", "2025-11-30")
+    assert calls[1] == ("2025-12-01", "2025-12-31")
+    assert calls[2] == ("2026-01-01", "2026-01-15")

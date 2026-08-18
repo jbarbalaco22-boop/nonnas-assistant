@@ -2,6 +2,7 @@
 All read-only: these only ever call fetch_*/compute_* functions from nonnas_shared,
 never anything that writes to QBO or Shopify.
 """
+import calendar
 import glob
 import json
 import os
@@ -181,3 +182,40 @@ def get_dashboard_data(qbo: QboContext, shopify: ShopifyContext, start_date: str
         "channels": channels,
         "caveat": UNITS_CAVEAT,
     }
+
+
+def get_monthly_trend(
+    qbo: QboContext, shopify: ShopifyContext, months: int = 6, today: date | None = None
+) -> list[dict]:
+    """Returns get_dashboard_data()'s result for each of the last `months` calendar months,
+    oldest first, including the current in-progress month (partial, ending today rather than
+    month-end). Powers trend charts by reusing the exact same per-period computation the
+    single-period dashboard uses, so a trend chart's numbers always match what the dashboard
+    itself would show for that same period - no separate trend-specific math to keep in sync.
+
+    `today` is injectable for deterministic testing; defaults to the real current date.
+    """
+    today = today or date.today()
+    first_of_this_month = today.replace(day=1)
+
+    period_starts = []
+    y, m = first_of_this_month.year, first_of_this_month.month
+    for _ in range(months):
+        period_starts.append(date(y, m, 1))
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    period_starts.reverse()
+
+    results = []
+    for i, period_start in enumerate(period_starts):
+        is_current_month = i == len(period_starts) - 1
+        if is_current_month:
+            period_end = today
+        else:
+            last_day = calendar.monthrange(period_start.year, period_start.month)[1]
+            period_end = period_start.replace(day=last_day)
+        results.append(
+            get_dashboard_data(qbo, shopify, period_start.isoformat(), period_end.isoformat())
+        )
+    return results
