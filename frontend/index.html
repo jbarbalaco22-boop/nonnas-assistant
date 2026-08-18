@@ -374,12 +374,25 @@
     font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted);
     margin: 0 0 12px;
   }
+  #cash-overhead-card { margin-top: 20px; }
+  #cash-overhead-card h2, #cash-obligations-card h2 {
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--slate); margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
+  }
   #cash-obligations-card { margin-top: 20px; }
-  #cash-obligations-card h2 { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--slate); margin: 0 0 12px; }
   #cash-payroll-row { font-size: 13px; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; }
   #cash-payroll-row div { display: flex; justify-content: space-between; }
   #cash-payroll-row .metric-label { color: var(--slate); font-weight: 400; }
   #cash-payroll-row span:last-child { font-weight: 700; color: var(--text); }
+  #cash-overhead-table table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #cash-overhead-table th {
+    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
+    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  #cash-overhead-table th:first-child { text-align: left; }
+  #cash-overhead-table td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #cash-overhead-table td:first-child { text-align: left; font-weight: 600; }
+  #cash-overhead-table tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
   #cash-obligations-list table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   #cash-obligations-list th {
     text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
@@ -736,9 +749,14 @@
               </div>
             </div>
 
-            <div id="cash-obligations-card" class="card">
-              <h2>Known Obligations</h2>
+            <div id="cash-overhead-card" class="card">
+              <h2>Recurring Fixed Costs (Overhead)<span id="cash-overhead-tooltip"></span></h2>
               <div id="cash-payroll-row"></div>
+              <div id="cash-overhead-table"></div>
+            </div>
+
+            <div id="cash-obligations-card" class="card">
+              <h2>Other Known Obligations</h2>
               <div id="cash-obligations-list"></div>
               <form id="cash-obligation-form">
                 <input type="text" id="obligation-name" placeholder="Description" required />
@@ -746,7 +764,7 @@
                 <input type="date" id="obligation-date" />
                 <button type="submit">Add</button>
               </form>
-              <p class="sku-revenue-note">Manual entries only — stored in this browser, not shared across devices or synced with QuickBooks.</p>
+              <p class="sku-revenue-note">Manual entries only — for anything not already covered by Overhead above (a one-off known bill, a planned purchase). Stored in this browser, not shared across devices or synced with QuickBooks.</p>
             </div>
           </div>
         </div>
@@ -1023,9 +1041,10 @@
     limitedData: "Amazon orders rarely flow through Shopify at all (no direct Amazon connection yet). Wholesale revenue is typically recorded as a bank deposit with no item/quantity, so it often shows zero units even when real sales happened. Treat DTC and TikTok as reliable; Amazon and Wholesale as directional at best.",
     skuRevenue: "On-demand only — pulls fresh every time you click, nothing is cached. Uses the date range selected above. Currently covers DTC only (recovered from transaction memo text, since QuickBooks has no structured per-SKU field yet) — other channels' real SKU activity won't show up here, not because there wasn't any. Revenue here settles a few days behind actual sales, so units sold on the Shopify side for recent days will often be ahead of what's shown here — that's a timing gap, not missing sales. Older transactions (before SKU tagging was turned on in the connector) are attributed to Nonna's Olive Oil (500mL Original), the only SKU that was selling then — this stops happening automatically once a second SKU goes active. Net here won't match DTC's Net Sales above by design — shipping revenue isn't tied to a specific SKU, so it's left out here (everything else — product revenue, discounts, refunds — is the same underlying QuickBooks accounts as DTC's Net Sales figure).",
     skuUnits: "\"Since Inception\" is every unit ever sold, combining a hand-reconciled historical reference (Shopify's own order history doesn't reach back more than ~60 days) with a live pull for whatever's more recent. \"For Selected Period\" uses the date range chosen above, combining the same two sources whenever the range reaches past that ~60-day window — any stretch covered by neither source shows up as a note below the table rather than being silently dropped. Pack-size SKUs (e.g. a 3-pack) show real bottle-equivalent units, with the raw order count underneath.",
-    cashBurn: "Based on the actual change in combined bank balance over the trailing 90 days, not accrual Net Income — see the note below for why those two numbers differ.",
-    cashRunway: "Combined cash balance ÷ monthly burn rate. Not shown when cash is growing (no burn to divide by).",
+    cashBurn: "The actual change in combined bank balance over the trailing 90 days, MINUS any equity/SAFE investment or loan money received in that window — investor money coming in isn't the business paying for itself, so it's excluded here rather than making burn look smaller than it is. See the note below for the exact numbers this period.",
+    cashRunway: "Combined cash balance ÷ operating monthly burn rate. Not shown when cash is growing on an operating basis (no burn to divide by).",
     cashNetIncome90d: "Accrual Net Income for the same 90-day window, shown for comparison only — it's not used to compute burn or runway. It usually differs from the real cash change because inventory purchases hit cash when paid, not when later recognized as cost of goods sold.",
+    cashOverhead: "Every recurring cost not already tied to a sales channel (payroll, payroll taxes, benefits, software, legal, accounting, and similar) — shown as a trailing-90-day monthly average per account. These fluctuate some but are broadly fixed, unlike ad spend or COGS which scale with sales volume.",
   };
   function infoIcon(key) {
     return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
@@ -1728,6 +1747,14 @@
       runwayClass = "positive";
     }
 
+    const financingNote = data.financing_inflows_90d
+      ? ` This period includes ${fmtCurrency(data.financing_inflows_90d)} in new investment ` +
+        `(equity/SAFE or loan proceeds) received during that window, which is excluded from the ` +
+        `burn figures above so it doesn't make the business look like it's covering more of its ` +
+        `own costs than it is — the raw, unadjusted cash change was ` +
+        `${fmtSignedCurrency(data.net_cash_change_90d)}.`
+      : "";
+
     document.getElementById("cash-card").innerHTML = `
       <h2>Combined Cash &amp; Runway</h2>
       <div id="cash-stats">
@@ -1747,12 +1774,15 @@
       </div>
       <div id="cash-basis-note">
         Based on the actual change in combined bank balance over the trailing 90 days
-        (${fmtDate(data.lookback_start)} – ${fmtDate(data.as_of)}), not accrual Net Income —
-        Net Income for that same window was ${fmtSignedCurrency(data.net_income_90d)}, which differs
-        because inventory purchases hit cash when paid, not when later recognized as cost of
-        goods sold.${infoIcon("cashNetIncome90d")}
+        (${fmtDate(data.lookback_start)} – ${fmtDate(data.as_of)}), minus financing activity, not
+        accrual Net Income — Net Income for that same window was
+        ${fmtSignedCurrency(data.net_income_90d)}, which differs because inventory purchases hit
+        cash when paid, not when later recognized as cost of goods sold.${infoIcon("cashNetIncome90d")}
+        ${financingNote}
       </div>
     `;
+
+    document.getElementById("cash-overhead-tooltip").innerHTML = infoIcon("cashOverhead");
 
     const payrollRow = document.getElementById("cash-payroll-row");
     if (data.known_payroll) {
@@ -1765,6 +1795,23 @@
       `;
     } else {
       payrollRow.innerHTML = `<p class="sku-revenue-note">Not enough recent payroll history to estimate the next payment.</p>`;
+    }
+
+    const overheadTable = document.getElementById("cash-overhead-table");
+    const overheadAccounts = data.overhead_accounts || [];
+    if (overheadAccounts.length === 0) {
+      overheadTable.innerHTML = `<p class="sku-revenue-note">No Overhead accounts found in the trailing 90-day P&L.</p>`;
+    } else {
+      const rows = overheadAccounts.map((r) => `
+        <tr><td>${r.label}</td><td>${fmtCurrency(r.monthly_avg)}</td></tr>
+      `).join("");
+      overheadTable.innerHTML = `
+        <table>
+          <thead><tr><th>Account</th><th>Typical Monthly</th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr><td>Total</td><td>${fmtCurrency(data.overhead_monthly_total)}</td></tr></tfoot>
+        </table>
+      `;
     }
   }
 
