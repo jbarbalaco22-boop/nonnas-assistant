@@ -242,6 +242,22 @@
     font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 12px;
     padding-top: 12px; border-top: 1px solid var(--border);
   }
+
+  /* ---- Channel comparison table ---- */
+  #channel-comparison-card { margin-top: 20px; }
+  #channel-comparison-card h2 {
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--slate); margin: 0 0 12px;
+  }
+  .table-scroll { overflow-x: auto; }
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 13.5px; white-space: nowrap; }
+  .comparison-table th {
+    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
+    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  .comparison-table th:first-child { text-align: left; }
+  .comparison-table td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  .comparison-table td:first-child { text-align: left; }
   .channel-empty-card {
     background: var(--panel); border: 1px dashed var(--border); border-radius: 12px;
     padding: 20px 22px; display: flex; flex-direction: column; justify-content: center;
@@ -602,6 +618,12 @@
         <div id="tab-channels" class="tab-panel" style="display:none">
           <div id="channel-grid-full"></div>
           <div id="dashboard-caveat"></div>
+
+          <div id="channel-comparison-card" class="card">
+            <h2>Channel Comparison</h2>
+            <div id="channel-comparison-table"></div>
+          </div>
+
           <div id="trends-section-channels">
             <h2>Trends</h2>
             <div id="trends-status-channels">Loading trends...</div>
@@ -609,7 +631,17 @@
               <div class="card chart-card">
                 <h3>Contribution Margin % by Channel</h3>
                 <div id="chart-contribution-by-channel"></div>
-                <div id="chart-legend" class="chart-legend"></div>
+                <div id="chart-legend-margin" class="chart-legend"></div>
+              </div>
+              <div class="card chart-card">
+                <h3>Discount Rate % by Channel</h3>
+                <div id="chart-discount-rate-by-channel"></div>
+                <div id="chart-legend-discount" class="chart-legend"></div>
+              </div>
+              <div class="card chart-card">
+                <h3>ROAS by Channel</h3>
+                <div id="chart-roas-by-channel"></div>
+                <div id="chart-legend-roas" class="chart-legend"></div>
               </div>
             </div>
           </div>
@@ -1122,6 +1154,47 @@
     grid.appendChild(col);
   }
 
+  function renderChannelComparisonTable(data) {
+    const dash = (v, fmt) => (v === null || v === undefined ? "—" : fmt(v));
+    const rows = CHANNELS.map((ch) => {
+      const m = data.channels[ch];
+      if (!m) return "";
+      const chip = UNRELIABLE_CHANNELS.has(ch) ? `<span class="chip limited">Limited</span>` : "";
+      const contribClass = m.contribution >= 0 ? "positive" : "negative";
+      const roasText = m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—";
+      return `
+        <tr>
+          <td>${ch}${chip}</td>
+          <td>${fmtCurrency(m.net_sales)}</td>
+          <td class="${contribClass}">${fmtSignedCurrency(m.contribution)}</td>
+          <td>${dash(m.contribution_pct, fmtPercent)}</td>
+          <td>${fmtNumber(m.orders)}</td>
+          <td>${dash(m.aov, fmtCurrency)}</td>
+          <td>${fmtNumber(m.units)}</td>
+          <td>${dash(m.discount_rate, fmtPercent)}</td>
+          <td>${dash(m.refund_rate, fmtPercent)}</td>
+          <td>${roasText}</td>
+          <td>${fmtCurrency(m.ads)}</td>
+        </tr>
+      `;
+    }).join("");
+    document.getElementById("channel-comparison-table").innerHTML = `
+      <div class="table-scroll">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Channel</th><th>Net Sales</th><th>Contribution</th><th>Margin %</th>
+              <th>Orders${infoIcon("ordersUnits")}</th><th>AOV</th><th>Units${infoIcon("ordersUnits")}</th>
+              <th>Discount Rate${infoIcon("discountRate")}</th><th>Refund Rate${infoIcon("refundRate")}</th>
+              <th>ROAS${infoIcon("roas")}</th><th>Ad Spend${infoIcon("ads")}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
   let lastDashboardData = null;  // so the SKU Revenue card can reference DTC's Net Sales for
   // the same period, to explain the shipping-exclusion gap inline rather than only in a tooltip
 
@@ -1175,6 +1248,7 @@
     // detail that used to live here.
     renderChannelGrid(data, "channel-grid-summary", buildSummaryChannelCard);
     renderChannelGrid(data, "channel-grid-full", buildFullChannelCard);
+    renderChannelComparisonTable(data);
 
     document.getElementById("dashboard-caveat").innerHTML = data.caveat
       ? `Amazon and Wholesale unit/order counts are known-incomplete — treat them as directional, not precise.${infoIcon("limitedData")}`
@@ -1476,26 +1550,39 @@
     renderBarChart("chart-mom-change", momBars, { format: (v) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%", inProgressIndex: momBars.length - 1 });
   }
 
-  function renderTrendsChannels(periods) {
-    const labels = periods.map((p) => fmtMonthLabel(p.start_date));
-    const lastIdx = periods.length - 1;
-
-    const channelSeries = CHANNELS.map((ch) => ({
+  function buildChannelSeries(periods, labels, metricKey, scale) {
+    return CHANNELS.map((ch) => ({
       name: ch,
       color: CHANNEL_COLORS[ch],
       points: periods.map((p, i) => {
-        const pct = p.channels[ch].contribution_pct;
+        const raw = p.channels[ch][metricKey];
         return {
-          label: labels[i], value: pct !== null && pct !== undefined ? pct * 100 : null,
+          label: labels[i], value: raw !== null && raw !== undefined ? raw * scale : null,
           startDate: p.start_date, endDate: p.end_date,
         };
       }),
     }));
-    renderMultiLineChart("chart-contribution-by-channel", channelSeries, { format: (v) => v.toFixed(1) + "%", inProgressIndex: lastIdx });
-
-    document.getElementById("chart-legend").innerHTML = CHANNELS.map(
+  }
+  function renderChartLegend(containerId) {
+    document.getElementById(containerId).innerHTML = CHANNELS.map(
       (ch) => `<span class="chart-legend-item"><span class="chart-legend-swatch" style="background:${CHANNEL_COLORS[ch]}"></span>${ch}</span>`
     ).join("");
+  }
+  function renderTrendsChannels(periods) {
+    const labels = periods.map((p) => fmtMonthLabel(p.start_date));
+    const lastIdx = periods.length - 1;
+
+    const marginSeries = buildChannelSeries(periods, labels, "contribution_pct", 100);
+    renderMultiLineChart("chart-contribution-by-channel", marginSeries, { format: (v) => v.toFixed(1) + "%", inProgressIndex: lastIdx });
+    renderChartLegend("chart-legend-margin");
+
+    const discountSeries = buildChannelSeries(periods, labels, "discount_rate", 100);
+    renderMultiLineChart("chart-discount-rate-by-channel", discountSeries, { format: (v) => v.toFixed(1) + "%", inProgressIndex: lastIdx });
+    renderChartLegend("chart-legend-discount");
+
+    const roasSeries = buildChannelSeries(periods, labels, "roas", 1);
+    renderMultiLineChart("chart-roas-by-channel", roasSeries, { format: (v) => v.toFixed(1) + "x", inProgressIndex: lastIdx });
+    renderChartLegend("chart-legend-roas");
   }
 
   let lastTrendsPeriods = null;  // so switchTab can lazily render the Channels tab's chart the
