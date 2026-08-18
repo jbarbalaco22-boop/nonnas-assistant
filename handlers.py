@@ -13,7 +13,7 @@ from nonnas_shared.connectors import channel_financials
 from nonnas_shared.connectors import qbo_client as shared_qbo
 from nonnas_shared.connectors import shopify_client as shared_shopify
 from nonnas_shared.connectors.shopify_channels import classify_source
-from nonnas_shared.connectors.sku_financials import compute_sku_revenue
+from nonnas_shared.connectors.sku_financials import compute_sku_revenue, sole_active_sku_as_of
 
 CHANNELS = ["DTC", "TikTok", "Amazon", "Wholesale"]
 
@@ -195,35 +195,38 @@ def get_sku_units_to_date(shopify: ShopifyContext, today: date | None = None) ->
        data, correctly SKU-attributed via Shopify's own per-line SKU field (no guessing needed
        here, unlike the QBO revenue side - Shopify has always tracked this).
 
-    Every historical month's total_units is attributed to OO-OO-ORG-500 - the sole SKU that has
-    ever sold (see sku_map.json's note on that SKU) - since the CSV only tracks a company-wide
-    total, not a per-SKU breakdown. The live current-month portion is already properly
-    SKU-bucketed, so this naturally starts reflecting real multi-SKU splits the moment a second
-    SKU has its first live sale, without needing any code change here.
+    Each historical month's total_units is attributed to whichever SKU was the registry's sole
+    active one as of that month's own end date (nonnas_shared.connectors.sku_financials'
+    sole_active_sku_as_of - the same per-transaction-date rule used on the revenue side, and for
+    the same reason: OO-OO-ORG-501 going active mid-August 2026 must not retroactively make
+    2024/2025 months ambiguous). A month where two-plus SKUs were already active by its end is
+    excluded rather than guessed at - conservative, matching the "never guess" principle
+    throughout this module. The live current-month portion is already properly SKU-bucketed via
+    Shopify's own per-line SKU field, so it needs no fallback at all.
     """
     today = today or date.today()
     current_month = today.strftime("%Y-%m")
     reference = load_channel_units_by_month()
+    sku_registry = load_sku_map()
 
-    historical_total = sum(
-        m["total_units"] for month, m in reference.items()
-        if month < current_month and m["total_units"] is not None
-    )
+    skus: dict = {}
+    for month, m in reference.items():
+        if month >= current_month or m["total_units"] is None:
+            continue
+        year, mo = (int(part) for part in month.split("-"))
+        month_end = date(year, mo, calendar.monthrange(year, mo)[1]).isoformat()
+        fallback_sku = sole_active_sku_as_of(sku_registry, month_end)
+        if fallback_sku is None:
+            continue
+        bucket = skus.setdefault(fallback_sku, {
+            "name": sku_registry.get(fallback_sku, {}).get("name"),
+            "units_to_date": 0,
+        })
+        bucket["units_to_date"] += m["total_units"]
+
     reference_through = max((m for m in reference if m < current_month), default=None)
 
     live = get_sku_units_live(shopify, f"{current_month}-01", today.isoformat())
-    sku_registry = load_sku_map()
-    fallback_sku = None
-    active = [sku for sku, info in sku_registry.items() if info.get("status") == "active"]
-    if len(active) == 1:
-        fallback_sku = active[0]
-
-    skus: dict = {}
-    if fallback_sku:
-        skus[fallback_sku] = {
-            "name": sku_registry.get(fallback_sku, {}).get("name"),
-            "units_to_date": historical_total,
-        }
     for sku, entry in live["skus"].items():
         live_units = sum(entry["channels"].values())
         bucket = skus.setdefault(sku, {"name": entry["name"], "units_to_date": 0})

@@ -206,6 +206,15 @@ def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
         "2026-08": {"DTC": 5, "TikTok": 0, "Amazon": 0, "Wholesale": 0, "total_units": 5, "note": "stale snapshot"},
     }
     monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: reference)
+    # A second SKU is already registered (active_since 2026-08-14) - every historical month
+    # here ends before that date, so it must not affect the historical attribution at all.
+    monkeypatch.setattr(
+        handlers, "load_sku_map",
+        lambda: {
+            "OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "status": "active"},
+            "OO-OO-ORG-501": {"name": "3-Pack", "status": "active", "active_since": "2026-08-14"},
+        },
+    )
 
     def fake_live(shopify, start, end):
         assert start == "2026-08-01" and end == "2026-08-18"
@@ -223,6 +232,35 @@ def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
     assert result["reference_through"] == "2026-07"
     assert result["live_from"] == "2026-08-01"
     assert result["live_to"] == "2026-08-18"
+
+
+def test_sku_units_to_date_excludes_month_ambiguous_by_its_own_end(monkeypatch):
+    """A historical month that ends on/after a second SKU's active_since is genuinely ambiguous
+    - excluded rather than guessed at, mirroring compute_sku_revenue's per-transaction-date
+    rule. August 2026 is a real example: OO-OO-ORG-501 went active 2026-08-14, so if August ever
+    became a "closed" reference month, it would need per-day granularity this CSV doesn't have -
+    the safe choice is to drop it, not misattribute it wholesale to either SKU."""
+    reference = {
+        "2026-08": {"DTC": None, "TikTok": None, "Amazon": None, "Wholesale": None, "total_units": 500, "note": ""},
+    }
+    monkeypatch.setattr(handlers, "load_channel_units_by_month", lambda: reference)
+    monkeypatch.setattr(
+        handlers, "load_sku_map",
+        lambda: {
+            "OO-OO-ORG-500": {"name": "Nonna's Olive Oil (500mL Original)", "status": "active"},
+            "OO-OO-ORG-501": {"name": "3-Pack", "status": "active", "active_since": "2026-08-14"},
+        },
+    )
+    monkeypatch.setattr(
+        handlers, "get_sku_units_live",
+        lambda shopify, start, end: {"start_date": start, "end_date": end, "pulled_at": "x", "skus": {}},
+    )
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    # today in September so August is a "closed" historical month subject to the fallback check
+    result = handlers.get_sku_units_to_date(fake_shopify, today=date(2026, 9, 1))
+
+    assert result["skus"] == {}
 
 
 def test_sku_units_to_date_no_fallback_when_multiple_active(monkeypatch):
