@@ -585,20 +585,7 @@
             <h2>SKU Revenue <span class="beta-tag">Beta</span></h2>
             <button id="sku-revenue-refresh-btn">Refresh SKU Data</button>
           </div>
-          <p class="sku-revenue-note">
-            On-demand only — pulls fresh every time you click, nothing is cached. Uses the date
-            range selected above. Currently covers DTC only (recovered from transaction memo
-            text, since QuickBooks has no structured per-SKU field yet) — other channels' real
-            SKU activity won't show up here, not because there wasn't any. Revenue here settles
-            a few days behind actual sales, so units sold on the Shopify side for recent days
-            will often be ahead of what's shown here — that's a timing gap, not missing sales.
-            Older transactions (before SKU tagging was turned on in the connector) are attributed
-            to Nonna's Olive Oil (500mL Original), the only SKU that was selling then — this
-            stops happening automatically once a second SKU goes active. Net here won't match
-            DTC's Net Sales above by design — shipping revenue isn't tied to a specific SKU, so
-            it's left out here (everything else — product revenue, discounts, refunds — is the
-            same underlying QuickBooks accounts as DTC's Net Sales figure).
-          </p>
+          <p class="sku-revenue-note" id="sku-revenue-note">DTC only, may lag a few days behind Shopify — how this works</p>
           <div id="sku-revenue-status"></div>
           <div id="sku-revenue-results"></div>
         </div>
@@ -611,13 +598,7 @@
               <button id="sku-units-period-btn">For Selected Period</button>
             </div>
           </div>
-          <p class="sku-revenue-note">
-            "Since Inception" is every unit ever sold, combining a hand-reconciled historical
-            reference (Shopify's own order history doesn't reach back that far) with a live pull
-            for the current month. "For Selected Period" uses the date range chosen above and
-            pulls live from Shopify. All units to date are Nonna's Olive Oil (500mL Original) —
-            the only SKU that's been selling.
-          </p>
+          <p class="sku-revenue-note" id="sku-units-note">Since-inception total, or pull any period — how this works</p>
           <div id="sku-units-status"></div>
           <div id="sku-units-results"></div>
         </div>
@@ -854,10 +835,16 @@
     refundRate: "Total refunds, as a percent of gross sales before refunds.",
     ordersUnits: "Source: Shopify order data.",
     limitedData: "Amazon orders rarely flow through Shopify at all (no direct Amazon connection yet). Wholesale revenue is typically recorded as a bank deposit with no item/quantity, so it often shows zero units even when real sales happened. Treat DTC and TikTok as reliable; Amazon and Wholesale as directional at best.",
+    skuRevenue: "On-demand only — pulls fresh every time you click, nothing is cached. Uses the date range selected above. Currently covers DTC only (recovered from transaction memo text, since QuickBooks has no structured per-SKU field yet) — other channels' real SKU activity won't show up here, not because there wasn't any. Revenue here settles a few days behind actual sales, so units sold on the Shopify side for recent days will often be ahead of what's shown here — that's a timing gap, not missing sales. Older transactions (before SKU tagging was turned on in the connector) are attributed to Nonna's Olive Oil (500mL Original), the only SKU that was selling then — this stops happening automatically once a second SKU goes active. Net here won't match DTC's Net Sales above by design — shipping revenue isn't tied to a specific SKU, so it's left out here (everything else — product revenue, discounts, refunds — is the same underlying QuickBooks accounts as DTC's Net Sales figure).",
+    skuUnits: "\"Since Inception\" is every unit ever sold, combining a hand-reconciled historical reference (Shopify's own order history doesn't reach back more than ~60 days) with a live pull for whatever's more recent. \"For Selected Period\" uses the date range chosen above, combining the same two sources whenever the range reaches past that ~60-day window — any stretch covered by neither source shows up as a note below the table rather than being silently dropped. Pack-size SKUs (e.g. a 3-pack) show real bottle-equivalent units, with the raw order count underneath.",
   };
   function infoIcon(key) {
     return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
   }
+  // Static (not data-dependent) notes get their info icon appended once here, rather than
+  // hand-duplicating the tooltip markup in the HTML template.
+  document.getElementById("sku-revenue-note").insertAdjacentHTML("beforeend", infoIcon("skuRevenue"));
+  document.getElementById("sku-units-note").insertAdjacentHTML("beforeend", infoIcon("skuUnits"));
   // Tooltips open on hover on desktop (CSS-only); this makes tap work on mobile, where
   // hover doesn't exist - tapping one icon opens it and closes any other open one.
   document.addEventListener("click", (e) => {
@@ -908,6 +895,23 @@
           ? ` — a likely factor in its ${fmtPercent(highest.contribution_pct)} margin`
           : "";
         insights.push(`${highest.ch}'s ${fmtPercent(highest.discount_rate)} discount rate is ${multiple}x ${lowest.ch}'s ${fmtPercent(lowest.discount_rate)}${marginText}.`);
+      }
+    }
+
+    // The discount-rate check above only flags whichever channel has the most extreme SINGLE
+    // metric - that can make one channel look like "the problem" while a different, less-named
+    // channel actually has the worse bottom-line outcome. Check independently whether the
+    // channel with the worst contribution margin is being surfaced at all.
+    const marginEntries = rateEntries
+      .filter((e) => e.contribution_pct !== null && e.contribution_pct !== undefined)
+      .sort((a, b) => a.contribution_pct - b.contribution_pct);
+    if (marginEntries.length >= 2) {
+      const worst = marginEntries[0];
+      const next = marginEntries[1];
+      if (worst.contribution_pct < 0 && next.contribution_pct < 0) {
+        insights.push(`${worst.ch}'s ${fmtPercent(worst.contribution_pct)} contribution margin is worse than ${next.ch}'s ${fmtPercent(next.contribution_pct)} — neither core channel is profitable before overhead this period.`);
+      } else if (worst.contribution_pct < 0) {
+        insights.push(`${worst.ch}'s contribution margin is ${fmtPercent(worst.contribution_pct)}, the weakest of the core channels this period.`);
       }
     }
 
@@ -1015,7 +1019,11 @@
     grid.appendChild(col);
   }
 
+  let lastDashboardData = null;  // so the SKU Revenue card can reference DTC's Net Sales for
+  // the same period, to explain the shipping-exclusion gap inline rather than only in a tooltip
+
   function renderDashboard(data) {
+    lastDashboardData = data;
     document.getElementById("freshness-bar").textContent =
       `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.generated_at)}`;
 
@@ -1413,11 +1421,22 @@
         </tr>
       `;
     }).join("");
+    // A quick inline explanation for the gap vs. DTC's headline Net Sales - noticed at the
+    // number itself, not just in a tooltip paragraph above it (this is shipping revenue, which
+    // isn't tied to a specific SKU, plus a small residual - see the skuRevenue tooltip).
+    const dtcNetSales = lastDashboardData?.channels?.DTC?.net_sales;
+    let totalLabel = "Total";
+    if (typeof dtcNetSales === "number") {
+      const gap = dtcNetSales - totalNet;
+      if (Math.abs(gap) >= 1) {
+        totalLabel = `Total<span class="sku-code">excludes ~${fmtCurrency(gap)} in shipping revenue not tied to a SKU</span>`;
+      }
+    }
     results.innerHTML = `
       <table>
         <thead><tr><th>SKU</th><th>Revenue</th><th>Discounts</th><th>Refunds</th><th>Net</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td>Total</td><td>${fmtCurrency(totalRevenue)}</td><td>${fmtCurrency(totalDiscounts)}</td><td>${fmtCurrency(totalRefunds)}</td><td>${fmtCurrency(totalNet)}</td></tr></tfoot>
+        <tfoot><tr><td>${totalLabel}</td><td>${fmtCurrency(totalRevenue)}</td><td>${fmtCurrency(totalDiscounts)}</td><td>${fmtCurrency(totalRefunds)}</td><td>${fmtCurrency(totalNet)}</td></tr></tfoot>
       </table>
     `;
   }

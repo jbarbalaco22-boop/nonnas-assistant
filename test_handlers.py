@@ -143,6 +143,58 @@ def test_period_comparison_sums_net_sales_and_contribution_only(monkeypatch):
     assert result["channels"]["DTC"] == {"net_sales": 1000.0, "contribution": 300.0}
 
 
+def test_shift_back_one_year_normal_case():
+    assert handlers._shift_back_one_year(date(2026, 8, 18)) == date(2025, 8, 18)
+
+
+def test_shift_back_one_year_clamps_feb29_in_non_leap_year():
+    assert handlers._shift_back_one_year(date(2028, 2, 29)) == date(2027, 2, 28)
+
+
+def test_prior_comparable_period_month_aligned_shifts_one_month():
+    """Month-to-Date (Aug 1-17) and a fully-closed "Last Month" selection both look like this -
+    day 1 through some day within the same month."""
+    prior_start, prior_end = handlers._prior_comparable_period(date(2026, 8, 1), date(2026, 8, 17))
+    assert (prior_start, prior_end) == (date(2026, 7, 1), date(2026, 7, 17))
+
+
+def test_prior_comparable_period_ytd_shifts_one_year_not_one_month():
+    """The actual bug being fixed: Year-to-Date (Jan 1 - Aug 18) must compare to the same
+    Jan 1 - Aug 18 span one year earlier, not "one month back" (which would wrongly produce
+    Dec 1 - Jul 18, a shorter, differently-shaped, meaningless comparison)."""
+    prior_start, prior_end = handlers._prior_comparable_period(date(2026, 1, 1), date(2026, 8, 18))
+    assert (prior_start, prior_end) == (date(2025, 1, 1), date(2025, 8, 18))
+
+
+def test_prior_comparable_period_last_30_days_uses_immediately_preceding_equal_length():
+    """Neither month- nor year-aligned - Last 30 Days (or any custom range) compares to the
+    immediately preceding period of the same length, ending the day before this one starts."""
+    start, end = date(2026, 7, 20), date(2026, 8, 18)  # 30 days
+    prior_start, prior_end = handlers._prior_comparable_period(start, end)
+    assert prior_end == date(2026, 7, 19)
+    assert (prior_end - prior_start).days + 1 == (end - start).days + 1  # same length
+    assert prior_start == date(2026, 6, 20)
+
+
+def test_prior_comparable_period_custom_range_uses_immediately_preceding_equal_length():
+    start, end = date(2026, 5, 10), date(2026, 5, 24)  # 15 days, not month-aligned
+    prior_start, prior_end = handlers._prior_comparable_period(start, end)
+    assert prior_end == date(2026, 5, 9)
+    assert prior_start == date(2026, 4, 25)
+
+
+def test_period_comparison_ytd_range_uses_prior_year_not_prior_month(monkeypatch):
+    def fake_financials(qbo, start, end):
+        assert start == "2025-01-01" and end == "2025-08-18"
+        return {"channels": {ch: {"net_sales": 0.0, "contribution": 0.0, "cogs": 0.0} for ch in handlers.CHANNELS}}
+
+    monkeypatch.setattr(handlers, "get_channel_financials_live", fake_financials)
+    result = handlers.get_period_comparison(None, "2026-01-01", "2026-08-18")
+
+    assert result["start_date"] == "2025-01-01"
+    assert result["end_date"] == "2025-08-18"
+
+
 def test_dashboard_includes_prior_period_by_default(monkeypatch):
     monkeypatch.setattr(handlers, "get_channel_financials_live", lambda qbo, s, e: _financials_result())
     monkeypatch.setattr(handlers, "get_channel_units_live", lambda shopify, s, e: _units_result())

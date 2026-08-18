@@ -438,18 +438,54 @@ def _shift_back_one_month(d: date) -> date:
     return date(y, m, min(d.day, last_day))
 
 
+def _shift_back_one_year(d: date) -> date:
+    """Same month/day, one calendar year earlier - clamped for Feb 29 in a year that isn't
+    leap (e.g. Feb 29, 2028 -> Feb 28, 2027)."""
+    year = d.year - 1
+    if d.month == 2 and d.day == 29 and calendar.monthrange(year, 2)[1] < 29:
+        return date(year, 2, 28)
+    return date(year, d.month, d.day)
+
+
+def _prior_comparable_period(start: date, end: date) -> tuple[date, date]:
+    """Picks the actually-meaningful prior period to compare against, based on the shape of the
+    requested range, rather than always shifting back one calendar month - which is right for a
+    single month-aligned range but wrong for anything else (a Year-to-Date range shifted back
+    one month compares an ~8.5-month span to a ~7.5-month span against the wrong prior period
+    entirely).
+
+    - Month-aligned (starts on the 1st, ends within that same month) - Month-to-Date, or a
+      fully-closed "Last Month" selection - compares to the same days one calendar month
+      earlier. This is the one case the original single global rule got right.
+    - Year-to-date (starts Jan 1 of the end date's year) - compares to the same days one
+      calendar year earlier, since a partial year needs to be measured against the same partial
+      year, not an arbitrary trailing month.
+    - Anything else (Last 30 Days, a custom range) - compares to the immediately preceding
+      period of equal length, ending the day before this range starts.
+    """
+    if start.day == 1 and end.year == start.year and end.month == start.month:
+        return _shift_back_one_month(start), _shift_back_one_month(end)
+    if start == date(end.year, 1, 1):
+        return _shift_back_one_year(start), _shift_back_one_year(end)
+    length = (end - start).days + 1
+    prior_end = start - timedelta(days=1)
+    prior_start = prior_end - timedelta(days=length - 1)
+    return prior_start, prior_end
+
+
 def get_period_comparison(qbo: QboContext, start_date: str, end_date: str) -> dict:
     """Returns net_sales/contribution, company-wide and per channel, for the prior comparable
-    period (same start/end day-of-month, one calendar month earlier) - powers the dashboard's
-    period-over-period deltas.
+    period - powers the dashboard's period-over-period deltas. See _prior_comparable_period's
+    docstring for how the comparison period is chosen based on the requested range's shape.
 
     Deliberately QBO-only: skips the Shopify order fetch and health-metric computation
     get_dashboard_data does, since only net_sales/contribution are needed for a delta - doing
     the full computation for a period whose orders/units/ROAS are never displayed would roughly
     double this endpoint's external API calls for no reason.
     """
-    prior_start = _shift_back_one_month(date.fromisoformat(start_date))
-    prior_end = _shift_back_one_month(date.fromisoformat(end_date))
+    prior_start, prior_end = _prior_comparable_period(
+        date.fromisoformat(start_date), date.fromisoformat(end_date)
+    )
     financials = get_channel_financials_live(qbo, prior_start.isoformat(), prior_end.isoformat())
     channel_margins = financials["channels"]
     return {
