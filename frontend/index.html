@@ -22,9 +22,12 @@
     --sage: #7C8A6C;
     --user-bubble: #BA654C;
     --assistant-bubble: #F2ECDF;
-    --error: #A6392E;
+    /* Deliberately more saturated and less orange than --accent (both are "warm reds" by
+       family, but too close in the old palette - #A6392E read as a shade of the brand rust
+       rather than a distinct danger color; real UI review finding, 2026-08-18). */
+    --error: #B8202A;
     --success: #2F6B3A;
-    --error-bg: #F7EAE8;
+    --error-bg: #F9EBEC;
     --success-bg: #EAF2EA;
     --warn-bg: #FBEEDF;
     --warn-text: #96482F;
@@ -422,6 +425,10 @@
     color: white; font-size: 13px; font-weight: 600; cursor: pointer;
   }
   #cash-obligation-form button:hover { background: var(--accent-dark); }
+  .obligation-sync-warning {
+    margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--warn-text);
+    background: var(--warn-bg); padding: 8px 12px; border-radius: 8px; line-height: 1.5;
+  }
 
   .chart-tooltip {
     display: none;
@@ -539,7 +546,7 @@
   .msg { max-width: 85%; min-width: 0; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
   .msg.user { align-self: flex-end; background: var(--user-bubble); color: white; border-bottom-right-radius: 4px; }
   .msg.assistant { align-self: flex-start; background: var(--assistant-bubble); color: var(--text); border-bottom-left-radius: 4px; }
-  .msg.error { align-self: flex-start; background: #fbe4de; color: var(--error); border-bottom-left-radius: 4px; }
+  .msg.error { align-self: flex-start; background: var(--error-bg); color: var(--error); border-bottom-left-radius: 4px; }
   .msg.pending { align-self: flex-start; background: var(--assistant-bubble); color: var(--muted); font-style: italic; }
 
   #input-bar {
@@ -770,7 +777,8 @@
                 <input type="date" id="obligation-date" />
                 <button type="submit">Add</button>
               </form>
-              <p class="sku-revenue-note">Manual entries only — for anything not already covered by Overhead above (a one-off known bill, a planned purchase). Stored in this browser, not shared across devices or synced with QuickBooks.</p>
+              <div class="obligation-sync-warning">⚠ Stored only in this browser — not synced across devices or to QuickBooks. Switching browsers or devices loses these entries.</div>
+              <p class="sku-revenue-note">Manual entries only — for anything not already covered by Overhead above (a one-off known bill, a planned purchase).</p>
             </div>
           </div>
         </div>
@@ -1050,6 +1058,7 @@
     refundRate: "Total refunds, as a percent of gross sales before refunds.",
     ordersUnits: "Source: Shopify order data.",
     limitedData: "Amazon orders rarely flow through Shopify at all (no direct Amazon connection yet). Wholesale revenue is typically recorded as a bank deposit with no item/quantity, so it often shows zero units even when real sales happened. Treat DTC and TikTok as reliable; Amazon and Wholesale as directional at best.",
+    wholesaleEmpty: "Wholesale revenue is typically recorded as a bank deposit with no item detail, so this may under-report — a real Wholesale sale can still have happened even when no orders show up here.",
     skuRevenue: "On-demand only — pulls fresh every time you click, nothing is cached. Uses the date range selected above. Currently covers DTC only (recovered from transaction memo text, since QuickBooks has no structured per-SKU field yet) — other channels' real SKU activity won't show up here, not because there wasn't any. Revenue here settles a few days behind actual sales, so units sold on the Shopify side for recent days will often be ahead of what's shown here — that's a timing gap, not missing sales. Older transactions (before SKU tagging was turned on in the connector) are attributed to Nonna's Olive Oil (500mL Original), the only SKU that was selling then — this stops happening automatically once a second SKU goes active. Net here won't match DTC's Net Sales above by design — shipping revenue isn't tied to a specific SKU, so it's left out here (everything else — product revenue, discounts, refunds — is the same underlying QuickBooks accounts as DTC's Net Sales figure).",
     skuUnits: "\"Since Inception\" is every unit ever sold, combining a hand-reconciled historical reference (Shopify's own order history doesn't reach back more than ~60 days) with a live pull for whatever's more recent. \"For Selected Period\" uses the date range chosen above, combining the same two sources whenever the range reaches past that ~60-day window — any stretch covered by neither source shows up as a note below the table rather than being silently dropped. Pack-size SKUs (e.g. a 3-pack) show real bottle-equivalent units, with the raw order count underneath.",
     cashBurn: "The actual change in combined bank balance over the trailing 90 days, MINUS any equity/SAFE investment or loan money received in that window — investor money coming in isn't the business paying for itself, so it's excluded here rather than making burn look smaller than it is. See the note below for the exact numbers this period.",
@@ -1216,7 +1225,7 @@
       <div class="revenue-share">${fmtPercent(m.revenue_share)} of revenue</div>
       <div class="primary-stat" style="font-size:19px;color:var(--slate)">${fmtCurrency(m.net_sales)} <span style="font-size:11.5px;font-weight:500;color:var(--muted)">net sales</span></div>
       <div class="primary-stat-label">${fmtNumber(m.orders)} orders</div>
-      <div class="muted-note">Limited real volume or known-incomplete data this period — see the Channels tab for details.</div>
+      <div class="muted-note">Limited data this period${infoIcon("limitedData")}</div>
     `;
     return card;
   }
@@ -1224,7 +1233,7 @@
     const card = document.createElement("div");
     card.className = "channel-empty-card";
     const note = ch === "Wholesale"
-      ? "No wholesale orders recorded this period. Wholesale posts as a bank deposit with no item detail, so this may under-report."
+      ? `No orders this period${infoIcon("wholesaleEmpty")}`
       : `No ${ch} orders recorded this period.`;
     card.innerHTML = `<h3>${ch}</h3><p>${note}</p>`;
     return card;
@@ -1373,7 +1382,7 @@
     renderChannelComparisonTable(data);
 
     document.getElementById("dashboard-caveat").innerHTML = data.caveat
-      ? `Amazon and Wholesale unit/order counts are known-incomplete — treat them as directional, not precise.${infoIcon("limitedData")}`
+      ? `Amazon &amp; Wholesale data quality note${infoIcon("limitedData")}`
       : "";
   }
 
@@ -1519,12 +1528,15 @@
     return { ticks, min: niceMin, max: niceMax };
   }
   function drawYAxis(pad, width, yScale, ticks, format) {
+    // Gridlines are a light reference, not part of the data - kept subtle so the actual line/
+    // bar stays the primary visual element (real UI review finding, 2026-08-18: gridlines/axis
+    // read as too heavy relative to the data itself).
     let svg = "";
     ticks.forEach((v) => {
       const y = yScale(v).toFixed(1);
       const emphasize = v === 0;
-      svg += `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="var(--border)" stroke-width="1" opacity="${emphasize ? 0.9 : 0.5}" />`;
-      svg += `<text x="2" y="${(parseFloat(y) - 2).toFixed(1)}" font-size="9" fill="var(--muted)">${format(v)}</text>`;
+      svg += `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="var(--border)" stroke-width="1" opacity="${emphasize ? 0.6 : 0.3}" />`;
+      svg += `<text x="2" y="${(parseFloat(y) - 2).toFixed(1)}" font-size="9" fill="var(--muted)" opacity="0.75">${format(v)}</text>`;
     });
     return svg;
   }
