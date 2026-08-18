@@ -258,6 +258,8 @@
   .comparison-table th:first-child { text-align: left; }
   .comparison-table td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
   .comparison-table td:first-child { text-align: left; }
+  .comparison-table tr.row-limited td { color: var(--muted); font-weight: 500; }
+  .comparison-table tr.row-limited td:first-child { color: var(--text); font-weight: 600; }
   .channel-empty-card {
     background: var(--panel); border: 1px dashed var(--border); border-radius: 12px;
     padding: 20px 22px; display: flex; flex-direction: column; justify-content: center;
@@ -450,8 +452,12 @@
     position: relative;
   }
   .info-icon .tooltip-text {
-    visibility: hidden;
-    opacity: 0;
+    /* display:none (not visibility:hidden) so the hidden tooltip's 200px box doesn't still
+       count toward every ancestor's scrollWidth, up through #dashboard-view - that's what was
+       triggering a phantom horizontal scrollbar once the chat panel narrowed the available
+       width (real bug, live audit 2026-08-18: visibility:hidden still participates in layout
+       even though nothing paints, display:none removes it from the layout tree entirely). */
+    display: none;
     position: absolute;
     bottom: 130%;
     left: 50%;
@@ -466,7 +472,6 @@
     line-height: 1.4;
     width: 200px;
     z-index: 50;
-    transition: opacity 0.15s ease;
     pointer-events: none;
   }
   .info-icon .tooltip-text::after {
@@ -480,8 +485,7 @@
   }
   .info-icon:hover .tooltip-text,
   .info-icon.tapped .tooltip-text {
-    visibility: visible;
-    opacity: 1;
+    display: block;
   }
 
   /* ---- Chat toggle button ---- */
@@ -1081,7 +1085,12 @@
         const rangeLabel = fmtShortRange(pp.start_date, pp.end_date);
         const dir = pctChange > 0 ? "up" : "down";
         let driver = null, driverDelta = 0;
+        // Excludes Limited channels (Amazon/Wholesale), same reasoning as the discount-rate
+        // insight below - their own channel card shows no prior-period comparison at all
+        // ("known-incomplete" data), so a "driven mostly by Amazon" claim here would be
+        // unverifiable against anything actually visible on screen.
         for (const ch of CHANNELS) {
+          if (UNRELIABLE_CHANNELS.has(ch)) continue;
           const cur = data.channels[ch] ? data.channels[ch].net_sales : 0;
           const prev = pp.channels[ch] ? pp.channels[ch].net_sales : 0;
           const d = cur - prev;
@@ -1258,11 +1267,16 @@
     const rows = CHANNELS.map((ch) => {
       const m = data.channels[ch];
       if (!m) return "";
-      const chip = UNRELIABLE_CHANNELS.has(ch) ? `<span class="chip limited">Limited</span>` : "";
+      const limited = UNRELIABLE_CHANNELS.has(ch);
+      const chip = limited ? `<span class="chip limited">Limited</span>` : "";
       const contribClass = m.contribution >= 0 ? "positive" : "negative";
-      const roasText = m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—";
+      // ROAS and Ad Spend depend on ad-spend data that isn't reliably attributable for Limited
+      // channels (see the "Limited" channel card above, which omits these same two metrics
+      // entirely) - dashed out here rather than shown as if they were trustworthy numbers.
+      const roasText = limited ? "—" : (m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—");
+      const adsText = limited ? "—" : fmtCurrency(m.ads);
       return `
-        <tr>
+        <tr class="${limited ? "row-limited" : ""}">
           <td>${ch}${chip}</td>
           <td>${fmtCurrency(m.net_sales)}</td>
           <td class="${contribClass}">${fmtSignedCurrency(m.contribution)}</td>
@@ -1273,7 +1287,7 @@
           <td>${dash(m.discount_rate, fmtPercent)}</td>
           <td>${dash(m.refund_rate, fmtPercent)}</td>
           <td>${roasText}</td>
-          <td>${fmtCurrency(m.ads)}</td>
+          <td>${adsText}</td>
         </tr>
       `;
     }).join("");
@@ -2204,7 +2218,10 @@
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ question, history: chatHistory }),
+        body: JSON.stringify({
+          question, history: chatHistory,
+          selected_range_start: currentRange.start, selected_range_end: currentRange.end,
+        }),
       });
       const data = await res.json();
       pending.remove();
