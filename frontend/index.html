@@ -272,13 +272,19 @@
   .chart-legend-item { display: flex; align-items: center; gap: 5px; }
   .chart-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
 
-  /* ---- SKU Revenue (on-demand, no caching) ---- */
-  #sku-revenue-section { margin-top: 20px; }
-  #sku-revenue-section .card-header-row {
+  /* ---- SKU Performance (Revenue + Units, paired side by side with matching headers) ---- */
+  #sku-section-group { margin-top: 20px; }
+  #sku-section-heading {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted);
+    margin: 0 0 12px;
+  }
+  #sku-section-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .sku-perf-card { margin-top: 0; }
+  #sku-revenue-section .card-header-row, #sku-units-section .card-header-row {
     display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
     margin-bottom: 10px;
   }
-  #sku-revenue-section h2 {
+  #sku-revenue-section h3, #sku-units-section h3 {
     font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
     color: var(--slate); margin: 0; display: flex; align-items: center; gap: 8px;
   }
@@ -307,15 +313,6 @@
   #sku-revenue-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
 
   /* ---- SKU Units (since-inception total + on-demand period pull) ---- */
-  #sku-units-section { margin-top: 20px; }
-  #sku-units-section .card-header-row {
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
-    margin-bottom: 10px;
-  }
-  #sku-units-section h2 {
-    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--slate); margin: 0; display: flex; align-items: center; gap: 8px;
-  }
   .sku-units-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
   #sku-units-to-date-btn, #sku-units-period-btn {
     padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px;
@@ -487,6 +484,7 @@
 
   /* ---- Mobile: chat panel becomes a full-screen overlay instead of a side column ---- */
   @media (max-width: 768px) {
+    #sku-section-row { grid-template-columns: 1fr; }
     #chat-panel:not(.hidden) {
       position: fixed;
       inset: 0;
@@ -580,27 +578,32 @@
           </div>
         </div>
 
-        <div id="sku-revenue-section" class="card">
-          <div class="card-header-row">
-            <h2>SKU Revenue <span class="beta-tag">Beta</span></h2>
-            <button id="sku-revenue-refresh-btn">Refresh SKU Data</button>
-          </div>
-          <p class="sku-revenue-note" id="sku-revenue-note">DTC only, may lag a few days behind Shopify — how this works</p>
-          <div id="sku-revenue-status"></div>
-          <div id="sku-revenue-results"></div>
-        </div>
+        <div id="sku-section-group">
+          <h2 id="sku-section-heading">SKU Performance</h2>
+          <div id="sku-section-row">
+            <div id="sku-revenue-section" class="card sku-perf-card">
+              <div class="card-header-row">
+                <h3>SKU Revenue <span class="beta-tag">Beta</span></h3>
+                <button id="sku-revenue-refresh-btn">Refresh SKU Data</button>
+              </div>
+              <p class="sku-revenue-note" id="sku-revenue-note">DTC only, may lag a few days behind Shopify — how this works</p>
+              <div id="sku-revenue-status"></div>
+              <div id="sku-revenue-results"></div>
+            </div>
 
-        <div id="sku-units-section" class="card">
-          <div class="card-header-row">
-            <h2>SKU Units <span class="beta-tag">Beta</span></h2>
-            <div class="sku-units-btn-group">
-              <button id="sku-units-to-date-btn">Since Inception</button>
-              <button id="sku-units-period-btn">For Selected Period</button>
+            <div id="sku-units-section" class="card sku-perf-card">
+              <div class="card-header-row">
+                <h3>SKU Units <span class="beta-tag">Beta</span></h3>
+                <div class="sku-units-btn-group">
+                  <button id="sku-units-to-date-btn">Since Inception</button>
+                  <button id="sku-units-period-btn">For Selected Period</button>
+                </div>
+              </div>
+              <p class="sku-revenue-note" id="sku-units-note">Since-inception total, or pull any period — how this works</p>
+              <div id="sku-units-status"></div>
+              <div id="sku-units-results"></div>
             </div>
           </div>
-          <p class="sku-revenue-note" id="sku-units-note">Since-inception total, or pull any period — how this works</p>
-          <div id="sku-units-status"></div>
-          <div id="sku-units-results"></div>
         </div>
       </div>
     </div>
