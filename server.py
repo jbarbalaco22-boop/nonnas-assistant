@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from assistant import _get_qbo_context, _get_shopify_context, ask
 from auth import verify_token
-from handlers import get_dashboard_data, get_monthly_trend
+from handlers import get_dashboard_data, get_monthly_trend, get_sku_revenue_live
 
 logger = logging.getLogger("nonnas_assistant")
 app = FastAPI(title="Harvest")
@@ -103,6 +103,24 @@ def trends_endpoint(
     except Exception as e:
         logger.exception("trends failed for last %s months", months)
         raise HTTPException(status_code=502, detail=f"Failed to load trends: {e}") from e
+
+
+@app.get("/sku-revenue")
+def sku_revenue_endpoint(
+    start_date: str,
+    end_date: str,
+    user: str = Depends(verify_token),
+) -> dict:
+    """On-demand, no caching (see get_sku_revenue_live's docstring) - this is the "Refresh SKU
+    Data" button's backing call, not something polled automatically. start_date/end_date are
+    required (unlike /dashboard) since this is always an explicit, deliberate action, not a
+    page-load default."""
+    qbo = _get_qbo_context()
+    try:
+        return get_sku_revenue_live(qbo, start_date, end_date)
+    except Exception as e:
+        logger.exception("sku-revenue failed for %s to %s", start_date, end_date)
+        raise HTTPException(status_code=502, detail=f"Failed to load SKU revenue: {e}") from e
 
 
 @app.post("/ask", response_model=AskResponse)

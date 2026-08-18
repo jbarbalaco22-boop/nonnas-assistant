@@ -124,3 +124,46 @@ def test_dashboard_returns_502_on_failure(monkeypatch):
     response = client.get("/dashboard", headers=AUTH_HEADER)
     assert response.status_code == 502
     assert "Shopify is down" in response.json()["detail"]
+
+
+def test_sku_revenue_rejects_missing_auth():
+    response = client.get("/sku-revenue?start_date=2026-08-01&end_date=2026-08-17")
+    assert response.status_code == 401
+
+
+def test_sku_revenue_requires_date_range():
+    # start_date/end_date have no defaults on this endpoint - always an explicit action.
+    response = client.get("/sku-revenue", headers=AUTH_HEADER)
+    assert response.status_code == 422
+
+
+def test_sku_revenue_passes_through_date_range(monkeypatch):
+    captured = {}
+
+    def _fake_get_sku_revenue_live(qbo, start_date, end_date):
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        return {"skus": {}}
+
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
+    monkeypatch.setattr(server, "get_sku_revenue_live", _fake_get_sku_revenue_live)
+
+    response = client.get(
+        "/sku-revenue?start_date=2026-08-10&end_date=2026-08-12", headers=AUTH_HEADER
+    )
+    assert response.status_code == 200
+    assert captured == {"start_date": "2026-08-10", "end_date": "2026-08-12"}
+
+
+def test_sku_revenue_returns_502_on_failure(monkeypatch):
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
+
+    def _boom(qbo, start_date, end_date):
+        raise RuntimeError("QBO query timed out")
+
+    monkeypatch.setattr(server, "get_sku_revenue_live", _boom)
+    response = client.get(
+        "/sku-revenue?start_date=2026-08-01&end_date=2026-08-17", headers=AUTH_HEADER
+    )
+    assert response.status_code == 502
+    assert "QBO query timed out" in response.json()["detail"]

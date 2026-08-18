@@ -13,6 +13,7 @@ from nonnas_shared.connectors import channel_financials
 from nonnas_shared.connectors import qbo_client as shared_qbo
 from nonnas_shared.connectors import shopify_client as shared_shopify
 from nonnas_shared.connectors.shopify_channels import classify_source
+from nonnas_shared.connectors.sku_financials import compute_sku_revenue
 
 CHANNELS = ["DTC", "TikTok", "Amazon", "Wholesale"]
 
@@ -176,6 +177,42 @@ def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) 
         "end_date": end_date,
         "pulled_at": datetime.now(timezone.utc).isoformat(),
         "skus": buckets,
+    }
+
+
+def get_sku_revenue_live(qbo: QboContext, start_date: str, end_date: str) -> dict:
+    """Live pull: revenue and discounts per SKU for an arbitrary date range, recovered from raw
+    JournalEntry transactions' free-text Description field - see nonnas_shared's
+    fetch_journal_entries/compute_sku_revenue docstrings for why (QuickBooks' JournalEntry
+    schema has no structured Product/Service field at all; A2X embeds the SKU as plain text
+    instead, confirmed against a real test transaction on 2026-08-18).
+
+    Deliberately not cached - re-pulls and re-parses every JournalEntry in the range on every
+    call, so it's meaningfully slower than the other live tools (can take several seconds for a
+    wide date range). This is the on-demand "Refresh SKU Data" button's backing call, not
+    something to invoke on every dashboard load.
+
+    Only covers whichever channels post through a connector that embeds SKU in the description
+    text (confirmed for DTC via A2X as of 2026-08-18) - other channels' real activity in this
+    range won't show up here at all, not because they had none. Also subject to QBO's query API
+    lagging behind very recently created transactions (observed directly: a transaction
+    retrievable by direct ID lookup didn't appear in ANY query for at least 20+ minutes after
+    creation) - a $0/empty result for a period that should have activity may just mean "not
+    indexed yet," not "nothing happened."
+    """
+    entries = shared_qbo.fetch_journal_entries(
+        qbo.realm_id, qbo.access_token,
+        date.fromisoformat(start_date), date.fromisoformat(end_date),
+        environment=qbo.environment,
+    )
+    sku_registry = load_sku_map()
+    revenue_by_sku = compute_sku_revenue(entries, sku_registry)
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "pulled_at": datetime.now(timezone.utc).isoformat(),
+        "skus": revenue_by_sku,
+        "journal_entries_scanned": len(entries),
     }
 
 

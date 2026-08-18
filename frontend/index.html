@@ -267,6 +267,40 @@
   .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--muted); }
   .chart-legend-item { display: flex; align-items: center; gap: 5px; }
   .chart-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+
+  /* ---- SKU Revenue (on-demand, no caching) ---- */
+  #sku-revenue-section { margin-top: 20px; }
+  #sku-revenue-section .card-header-row {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    margin-bottom: 10px;
+  }
+  #sku-revenue-section h2 {
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--slate); margin: 0; display: flex; align-items: center; gap: 8px;
+  }
+  .beta-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: none;
+    background: var(--warn-bg); color: var(--warn-text); padding: 2px 7px; border-radius: 6px;
+  }
+  #sku-revenue-refresh-btn {
+    padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--accent); color: white; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #sku-revenue-refresh-btn:hover { background: var(--accent-dark); }
+  #sku-revenue-refresh-btn:disabled { background: var(--muted); cursor: not-allowed; }
+  .sku-revenue-note { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 14px; }
+  #sku-revenue-status { font-size: 13px; color: var(--slate); }
+  #sku-revenue-status.error { color: var(--error); }
+  #sku-revenue-results table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #sku-revenue-results th {
+    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
+    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  #sku-revenue-results th:first-child { text-align: left; }
+  #sku-revenue-results td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #sku-revenue-results td:first-child { text-align: left; font-weight: 600; }
+  #sku-revenue-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
+  #sku-revenue-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
   .chart-tooltip {
     display: none;
     position: fixed;
@@ -506,6 +540,21 @@
               <div id="chart-legend" class="chart-legend"></div>
             </div>
           </div>
+        </div>
+
+        <div id="sku-revenue-section" class="card">
+          <div class="card-header-row">
+            <h2>SKU Revenue <span class="beta-tag">Beta</span></h2>
+            <button id="sku-revenue-refresh-btn">Refresh SKU Data</button>
+          </div>
+          <p class="sku-revenue-note">
+            On-demand only — pulls fresh every time you click, nothing is cached. Uses the date
+            range selected above. Currently covers DTC only (recovered from transaction memo
+            text, since QuickBooks has no structured per-SKU field yet) — other channels' real
+            SKU activity won't show up here, not because there wasn't any.
+          </p>
+          <div id="sku-revenue-status"></div>
+          <div id="sku-revenue-results"></div>
         </div>
       </div>
     </div>
@@ -1270,6 +1319,76 @@
       trendsStatus.className = "error";
     }
   }
+
+  // ---- SKU Revenue (on-demand, no caching - see server.py's /sku-revenue docstring) ----
+  function renderSkuRevenue(data) {
+    const results = document.getElementById("sku-revenue-results");
+    const skus = Object.entries(data.skus || {});
+    if (skus.length === 0) {
+      results.innerHTML = `<p class="sku-revenue-note">No SKU-tagged revenue found for this range — either nothing sold, or it hasn't posted to QuickBooks yet.</p>`;
+      return;
+    }
+    skus.sort((a, b) => b[1].net - a[1].net);
+    let totalRevenue = 0, totalDiscounts = 0, totalNet = 0;
+    const rows = skus.map(([sku, m]) => {
+      totalRevenue += m.revenue;
+      totalDiscounts += m.discounts;
+      totalNet += m.net;
+      const label = m.name
+        ? `${m.name}<span class="sku-code">${sku}</span>`
+        : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
+      return `
+        <tr>
+          <td>${label}</td>
+          <td>${fmtCurrency(m.revenue)}</td>
+          <td>${fmtCurrency(m.discounts)}</td>
+          <td>${fmtCurrency(m.net)}</td>
+        </tr>
+      `;
+    }).join("");
+    results.innerHTML = `
+      <table>
+        <thead><tr><th>SKU</th><th>Revenue</th><th>Discounts</th><th>Net</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td>Total</td><td>${fmtCurrency(totalRevenue)}</td><td>${fmtCurrency(totalDiscounts)}</td><td>${fmtCurrency(totalNet)}</td></tr></tfoot>
+      </table>
+    `;
+  }
+
+  async function loadSkuRevenue() {
+    const btn = document.getElementById("sku-revenue-refresh-btn");
+    const status = document.getElementById("sku-revenue-status");
+    const results = document.getElementById("sku-revenue-results");
+
+    btn.disabled = true;
+    status.textContent = "Pulling and parsing transactions — this can take a few seconds...";
+    status.className = "";
+    results.innerHTML = "";
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const params = new URLSearchParams({ start_date: currentRange.start, end_date: currentRange.end });
+      const res = await fetch(`${API_BASE}/sku-revenue?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.detail || "Couldn't load SKU revenue.";
+        status.className = "error";
+        return;
+      }
+      renderSkuRevenue(data);
+      status.textContent =
+        `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.pulled_at)} `
+        + `· ${data.journal_entries_scanned} transactions scanned`;
+    } catch (e) {
+      status.textContent = "Couldn't reach the server — check your connection and try again.";
+      status.className = "error";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  document.getElementById("sku-revenue-refresh-btn").addEventListener("click", loadSkuRevenue);
 
   // ---- Chat ----
   function addMessage(text, className) {

@@ -194,3 +194,36 @@ def test_sku_units_live_buckets_by_sku_then_channel(monkeypatch):
     assert result["skus"]["(no SKU)"]["name"] is None  # not in the registry
     assert result["skus"]["(no SKU)"]["channels"]["DTC"] == 2
     assert len(result["skus"]) == 3  # draft order's SKU never appears
+
+
+def test_sku_revenue_live_uses_shared_qbo_client_and_parser(monkeypatch):
+    real_je = {
+        "Line": [
+            {
+                "Description": "ProductSalesNotTaxed  - OO-OO-ORG-500 - Online store",
+                "Amount": 27.0,
+                "JournalEntryLineDetail": {"PostingType": "Credit"},
+            },
+            {
+                "Description": "DiscountNotTaxed  - OO-OO-ORG-500 - Online store",
+                "Amount": 3.24,
+                "JournalEntryLineDetail": {"PostingType": "Debit"},
+            },
+        ]
+    }
+    calls = []
+
+    def fake_fetch(realm_id, access_token, start, end, environment="production"):
+        calls.append((start, end))
+        return [real_je]
+
+    monkeypatch.setattr(handlers.shared_qbo, "fetch_journal_entries", fake_fetch)
+
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_sku_revenue_live(fake_qbo, "2026-08-10", "2026-08-12")
+
+    assert calls[0] == (date(2026, 8, 10), date(2026, 8, 12))
+    assert result["skus"]["OO-OO-ORG-500"]["revenue"] == 27.0
+    assert result["skus"]["OO-OO-ORG-500"]["discounts"] == -3.24
+    assert round(result["skus"]["OO-OO-ORG-500"]["net"], 2) == 23.76
+    assert result["journal_entries_scanned"] == 1
