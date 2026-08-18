@@ -560,7 +560,10 @@
             will often be ahead of what's shown here — that's a timing gap, not missing sales.
             Older transactions (before SKU tagging was turned on in the connector) are attributed
             to Nonna's Olive Oil (500mL Original), the only SKU that was selling then — this
-            stops happening automatically once a second SKU goes active.
+            stops happening automatically once a second SKU goes active. Net here won't match
+            DTC's Net Sales above by design — shipping revenue isn't tied to a specific SKU, so
+            it's left out here (everything else — product revenue, discounts, refunds — is the
+            same underlying QuickBooks accounts as DTC's Net Sales figure).
           </p>
           <div id="sku-revenue-status"></div>
           <div id="sku-revenue-results"></div>
@@ -1338,10 +1341,11 @@
       return;
     }
     skus.sort((a, b) => b[1].net - a[1].net);
-    let totalRevenue = 0, totalDiscounts = 0, totalNet = 0;
+    let totalRevenue = 0, totalDiscounts = 0, totalRefunds = 0, totalNet = 0;
     const rows = skus.map(([sku, m]) => {
       totalRevenue += m.revenue;
       totalDiscounts += m.discounts;
+      totalRefunds += m.refunds || 0;
       totalNet += m.net;
       const label = m.name
         ? `${m.name}<span class="sku-code">${sku}</span>`
@@ -1351,15 +1355,16 @@
           <td>${label}</td>
           <td>${fmtCurrency(m.revenue)}</td>
           <td>${fmtCurrency(m.discounts)}</td>
+          <td>${fmtCurrency(m.refunds || 0)}</td>
           <td>${fmtCurrency(m.net)}</td>
         </tr>
       `;
     }).join("");
     results.innerHTML = `
       <table>
-        <thead><tr><th>SKU</th><th>Revenue</th><th>Discounts</th><th>Net</th></tr></thead>
+        <thead><tr><th>SKU</th><th>Revenue</th><th>Discounts</th><th>Refunds</th><th>Net</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td>Total</td><td>${fmtCurrency(totalRevenue)}</td><td>${fmtCurrency(totalDiscounts)}</td><td>${fmtCurrency(totalNet)}</td></tr></tfoot>
+        <tfoot><tr><td>Total</td><td>${fmtCurrency(totalRevenue)}</td><td>${fmtCurrency(totalDiscounts)}</td><td>${fmtCurrency(totalRefunds)}</td><td>${fmtCurrency(totalNet)}</td></tr></tfoot>
       </table>
     `;
   }

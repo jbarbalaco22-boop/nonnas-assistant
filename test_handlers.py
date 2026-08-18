@@ -203,12 +203,20 @@ def test_sku_revenue_live_uses_shared_qbo_client_and_parser(monkeypatch):
             {
                 "Description": "ProductSalesNotTaxed  - OO-OO-ORG-500 - Online store",
                 "Amount": 27.0,
-                "JournalEntryLineDetail": {"PostingType": "Credit"},
+                "JournalEntryLineDetail": {
+                    "PostingType": "Credit",
+                    "AccountRef": {"name": "Product Revenue – DTC"},
+                    "ClassRef": {"name": "DTC"},
+                },
             },
             {
                 "Description": "DiscountNotTaxed  - OO-OO-ORG-500 - Online store",
                 "Amount": 3.24,
-                "JournalEntryLineDetail": {"PostingType": "Debit"},
+                "JournalEntryLineDetail": {
+                    "PostingType": "Debit",
+                    "AccountRef": {"name": "Discounts & Promotions"},
+                    "ClassRef": {"name": "DTC"},
+                },
             },
         ]
     }

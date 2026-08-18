@@ -181,11 +181,18 @@ def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) 
 
 
 def get_sku_revenue_live(qbo: QboContext, start_date: str, end_date: str) -> dict:
-    """Live pull: revenue and discounts per SKU for an arbitrary date range, recovered from raw
-    JournalEntry transactions' free-text Description field - see nonnas_shared's
+    """Live pull: revenue, discounts, and refunds per SKU for an arbitrary date range, recovered
+    from raw JournalEntry transactions' free-text Description field - see nonnas_shared's
     fetch_journal_entries/compute_sku_revenue docstrings for why (QuickBooks' JournalEntry
     schema has no structured Product/Service field at all; A2X embeds the SKU as plain text
     instead, confirmed against a real test transaction on 2026-08-18).
+
+    Reconciling against the channel-level "DTC Net Sales" figure: this pull's net is DTC Net
+    Sales minus Shipping Revenue (deliberately excluded here - shipping isn't tied to a specific
+    SKU), plus a small ($10-ish) residual from lines whose Description is genuinely ambiguous
+    (see sku_financials' "known residual gap" note) that get conservatively excluded rather than
+    guessed at. A real July 2026 pull reconciled to within $11.18 of that basis on a ~$4,900
+    range - confirmed by direct QBO account inspection, not assumed.
 
     Deliberately not cached - re-pulls and re-parses every JournalEntry in the range on every
     call, so it's meaningfully slower than the other live tools (can take several seconds for a
