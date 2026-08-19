@@ -697,7 +697,7 @@
           </div>
 
           <div id="repeat-purchase-card" class="card">
-            <h2>Repeat Purchase Rate<span id="repeat-purchase-tooltip"></span></h2>
+            <h2>Customer Acquisition &amp; Repeat Rate<span id="repeat-purchase-tooltip"></span></h2>
             <div id="repeat-purchase-status"></div>
             <div id="repeat-purchase-results"></div>
           </div>
@@ -1105,7 +1105,7 @@
     cashRunway: "Combined cash balance ÷ operating monthly burn rate. Not shown when cash is growing on an operating basis (no burn to divide by).",
     cashNetIncome90d: "Accrual Net Income for the same 90-day window, shown for comparison only — it's not used to compute burn or runway. It usually differs from the real cash change because inventory purchases hit cash when paid, not when later recognized as cost of goods sold.",
     cashOverhead: "Every recurring cost not already tied to a sales channel (payroll, payroll taxes, benefits, software, legal, accounting, and similar) — shown as a trailing-90-day monthly average per account. These fluctuate some but are broadly fixed, unlike ad spend or COGS which scale with sales volume.",
-    repeatPurchase: "Share of orders in the selected period from a customer who'd already ordered before, vs. their first order ever — DTC and TikTok only (Amazon and Wholesale orders rarely carry real Shopify customer identity). Subscription renewals count as repeat orders here, same as any other reorder.",
+    repeatPurchase: "Share of orders in the selected period from a customer who'd already ordered before, vs. their first order ever — DTC and TikTok only (Amazon and Wholesale orders rarely carry real Shopify customer identity). Subscription renewals count as repeat orders here, same as any other reorder. CAC is that channel's ad spend for the period divided by its new-customer count — not a full ROAS/margin picture, just what it cost to bring each new customer in.",
   };
   function infoIcon(key) {
     return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
@@ -2393,7 +2393,11 @@
     status.className = (!periodData || !toDateData) ? "error" : "";
   }
 
-  // ---- Repeat Purchase Rate (Channels tab) ----
+  // ---- Repeat Purchase Rate + CAC (Channels tab) ----
+  // CAC needs no backend call of its own - ad spend per channel already comes back on
+  // /dashboard's data.company/channels (lastDashboardData, set by renderDashboard, which always
+  // runs before this since both are triggered from the same loadDashboard success handler), and
+  // new-customer counts already come back on this endpoint's own response.
   function renderRepeatPurchaseTable(data) {
     const results = document.getElementById("repeat-purchase-results");
     const channels = ["DTC", "TikTok"];
@@ -2402,11 +2406,14 @@
       if (!m) return "";
       const rate = m.repeat_purchase_rate !== null && m.repeat_purchase_rate !== undefined
         ? fmtPercent(m.repeat_purchase_rate) : "—";
+      const ads = lastDashboardData && lastDashboardData.channels[ch] ? lastDashboardData.channels[ch].ads : null;
+      const cac = ads !== null && ads !== undefined && m.new_customers > 0 ? ads / m.new_customers : null;
       return `
         <tr>
           <td>${ch}</td>
           <td>${rate}</td>
           <td>${fmtNumber(m.new_customers)}</td>
+          <td>${cac !== null ? fmtCurrency(cac) : "—"}</td>
           <td>${fmtNumber(m.returning_orders)}</td>
         </tr>
       `;
@@ -2414,7 +2421,7 @@
     results.innerHTML = `
       <div class="table-scroll">
         <table class="comparison-table">
-          <thead><tr><th>Channel</th><th>Repeat Rate</th><th>New Customers</th><th>Returning Orders</th></tr></thead>
+          <thead><tr><th>Channel</th><th>Repeat Rate</th><th>New Customers</th><th>CAC</th><th>Returning Orders</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
