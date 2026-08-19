@@ -147,7 +147,7 @@
   .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab-panel .card:first-child { margin-top: 0; }
 
-  #insight-strip {
+  #insight-strip, #cash-insight-strip {
     display: none; /* shown via JS only when there's something worth saying */
     gap: 16px;
     background: linear-gradient(135deg, #F3E3D6, #F7ECDD);
@@ -156,14 +156,14 @@
     padding: 18px 22px;
     margin-bottom: 20px;
   }
-  #insight-strip .insight-icon { flex: 0 0 auto; font-size: 24px; line-height: 1; margin-top: 2px; }
-  #insight-strip b {
+  #insight-strip .insight-icon, #cash-insight-strip .insight-icon { flex: 0 0 auto; font-size: 24px; line-height: 1; margin-top: 2px; }
+  #insight-strip b, #cash-insight-strip b {
     display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
     color: var(--accent-dark); margin-bottom: 8px;
   }
-  #insight-strip ul { margin: 0; padding-left: 18px; }
-  #insight-strip li { font-size: 13.5px; line-height: 1.65; color: var(--text); margin-bottom: 4px; }
-  #insight-strip li:last-child { margin-bottom: 0; }
+  #insight-strip ul, #cash-insight-strip ul { margin: 0; padding-left: 18px; }
+  #insight-strip li, #cash-insight-strip li { font-size: 13.5px; line-height: 1.65; color: var(--text); margin-bottom: 4px; }
+  #insight-strip li:last-child, #cash-insight-strip li:last-child { margin-bottom: 0; }
 
   select:focus-visible, button:focus-visible, .info-icon:focus-visible {
     outline: 2px solid var(--indigo); outline-offset: 2px;
@@ -756,6 +756,13 @@
         <div id="tab-cash" class="tab-panel" style="display:none">
           <div id="cash-status">Loading cash snapshot...</div>
           <div id="cash-content" style="display:none">
+            <div id="cash-insight-strip">
+              <div class="insight-icon">💡</div>
+              <div class="insight-body">
+                <b>What's driving this</b>
+                <ul id="cash-insight-list"></ul>
+              </div>
+            </div>
             <div id="cash-card" class="card"></div>
 
             <div id="cash-trend-section">
@@ -1987,7 +1994,41 @@
     renderChartLegend("chart-cash-variable-spend-legend");
   }
 
+  // Same rule-based, no-LLM approach as the Overview strip - only the Overhead/burn rule is
+  // new to this tab; the runway rule mirrors the threshold the stat card itself already uses
+  // (< 6 months = flagged red there too).
+  function generateCashInsights(data) {
+    const insights = [];
+
+    if (data.runway_months !== null && data.runway_months !== undefined && data.runway_months < 6) {
+      insights.push(`At the current burn rate, there's about ${data.runway_months.toFixed(1)} months of runway left (~${fmtCurrency(data.monthly_burn)}/mo).`);
+    } else if (data.monthly_burn <= 0) {
+      insights.push(`Cash is growing, not shrinking, on an operating basis (~${fmtCurrency(Math.abs(data.monthly_burn))}/mo) - no immediate runway concern at this pace.`);
+    }
+
+    if (data.monthly_burn > 0 && data.overhead_monthly_total > 0) {
+      const overheadShare = data.overhead_monthly_total / data.monthly_burn;
+      if (overheadShare > 0 && overheadShare < 1) {
+        const variableAmt = data.monthly_burn - data.overhead_monthly_total;
+        insights.push(`Overhead (${fmtCurrency(data.overhead_monthly_total)}/mo) is ${fmtPercent(overheadShare)} of the ${fmtCurrency(data.monthly_burn)}/mo burn rate — the remaining ${fmtCurrency(variableAmt)}/mo is variable spend, the lever you can pull first if you need to slow burn.`);
+      }
+    }
+
+    return insights;
+  }
+  function renderCashInsightStrip(data) {
+    const insights = generateCashInsights(data);
+    const section = document.getElementById("cash-insight-strip");
+    if (insights.length === 0) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "flex";
+    document.getElementById("cash-insight-list").innerHTML = insights.map((t) => `<li>${t}</li>`).join("");
+  }
+
   function renderCashSnapshot(data) {
+    renderCashInsightStrip(data);
     const burning = data.monthly_burn > 0;
     const burnLabel = burning ? "Monthly Burn Rate" : "Monthly Cash Growth";
     const burnValue = fmtCurrency(Math.abs(data.monthly_burn));
