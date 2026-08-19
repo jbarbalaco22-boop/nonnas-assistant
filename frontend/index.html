@@ -581,8 +581,10 @@
   /* ---- Mobile: chat panel becomes a full-screen overlay instead of a side column ---- */
   @media (max-width: 768px) {
     #sku-section-row { grid-template-columns: 1fr; }
-    #tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .tab-btn { flex-shrink: 0; padding: 10px 12px; font-size: 13px; }
+    /* 2x2 grid, not a horizontal scroller - a scrolling tab bar left "Cash & Runway" completely
+       off-screen with no visual hint it existed, easy to miss on a phone. */
+    #tab-nav { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+    .tab-btn { padding: 10px 8px; font-size: 13px; text-align: center; }
     #chat-panel:not(.hidden) {
       position: fixed;
       inset: 0;
@@ -765,6 +767,12 @@
                   <div id="chart-cash-balance-legend" class="chart-legend"></div>
                   <div id="chart-cash-balance-note"></div>
                 </div>
+                <div class="card chart-card">
+                  <h3>Variable Spend (Ads/Marketing) by Channel</h3>
+                  <div id="chart-cash-variable-spend"></div>
+                  <div id="chart-cash-variable-spend-legend" class="chart-legend"></div>
+                  <p class="sku-revenue-note">The lever you can actually pull week to week — Overhead below is largely fixed.</p>
+                </div>
               </div>
             </div>
 
@@ -917,6 +925,9 @@
     }
     if (name === "cash" && lastCashSnapshot) {
       renderCashBalanceChart(lastCashSnapshot);
+    }
+    if (name === "cash" && lastTrendsPeriods) {
+      renderCashVariableSpendChart(lastTrendsPeriods);
     }
   }
 
@@ -1646,12 +1657,12 @@
     container.innerHTML = svg + "</svg>";
   }
 
-  function renderStackedBarChart(containerId, periods, labels, { format, inProgressIndex = null }) {
+  function renderStackedBarChart(containerId, periods, labels, { format, inProgressIndex = null, metricKey = "net_sales" }) {
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 200);
     const height = 150;
     const pad = { left: 50, right: 8, top: 10, bottom: 22 };
-    const totals = periods.map((p) => CHANNELS.reduce((sum, ch) => sum + (p.channels[ch].net_sales || 0), 0));
+    const totals = periods.map((p) => CHANNELS.reduce((sum, ch) => sum + (p.channels[ch][metricKey] || 0), 0));
     const { ticks, min: minV, max: maxV } = niceTicks(0, Math.max(...totals));
     const plotW = width - pad.left - pad.right;
     const plotH = height - pad.top - pad.bottom;
@@ -1666,7 +1677,7 @@
       const inProgress = inProgressIndex === i;
       let cumulative = 0;
       CHANNELS.forEach((ch) => {
-        const val = p.channels[ch].net_sales || 0;
+        const val = p.channels[ch][metricKey] || 0;
         if (val <= 0) return;
         const yTop = yScale(cumulative + val);
         const yBottom = yScale(cumulative);
@@ -1840,8 +1851,9 @@
       trendsStatusChannels.style.display = "none";
       trendsGridChannels.style.display = "grid";
       if (currentTab === "channels") renderTrendsChannels(data.periods);
-      // else: rendered lazily by switchTab the first time the Channels tab is visited, since a
-      // chart drawn while its tab is hidden would measure 0 width.
+      if (currentTab === "cash") renderCashVariableSpendChart(data.periods);
+      // else: rendered lazily by switchTab the first time the Channels/Cash tab is visited, since
+      // a chart drawn while its tab is hidden would measure 0 width.
     } catch (e) {
       trendsStatusOverview.textContent = "Couldn't reach the server — check your connection and try again.";
       trendsStatusOverview.className = "error";
@@ -1958,6 +1970,15 @@
     } else {
       noteEl.textContent = "";
     }
+  }
+
+  function renderCashVariableSpendChart(periods) {
+    const labels = periods.map((p) => fmtMonthLabel(p.start_date));
+    const lastIdx = periods.length - 1;
+    renderStackedBarChart("chart-cash-variable-spend", periods, labels, {
+      format: fmtCurrency, inProgressIndex: lastIdx, metricKey: "ads",
+    });
+    renderChartLegend("chart-cash-variable-spend-legend");
   }
 
   function renderCashSnapshot(data) {
