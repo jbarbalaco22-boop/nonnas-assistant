@@ -552,33 +552,6 @@ def test_sku_revenue_live_uses_shared_qbo_client_and_parser(monkeypatch):
     assert result["journal_entries_scanned"] == 1
 
 
-def test_estimate_next_payroll_returns_none_with_fewer_than_two_transactions(monkeypatch):
-    monkeypatch.setattr(
-        handlers.shared_qbo, "fetch_gl_account_transactions",
-        lambda *a, **k: [{"date": "2026-08-13", "amount": 5391.65}],
-    )
-    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
-    assert handlers._estimate_next_payroll(fake_qbo, date(2026, 8, 18)) is None
-
-
-def test_estimate_next_payroll_projects_from_last_interval(monkeypatch):
-    # Mirrors real data confirmed live 2026-08-18: flat biweekly Founder/Officer Compensation.
-    monkeypatch.setattr(
-        handlers.shared_qbo, "fetch_gl_account_transactions",
-        lambda *a, **k: [
-            {"date": "2026-07-16", "amount": 5391.65},
-            {"date": "2026-07-30", "amount": 5391.65},
-            {"date": "2026-08-13", "amount": 5391.65},
-        ],
-    )
-    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
-    result = handlers._estimate_next_payroll(fake_qbo, date(2026, 8, 18))
-    assert result == {
-        "amount": 5391.65, "last_date": "2026-08-13", "cadence_days": 14,
-        "next_estimated_date": "2026-08-27",
-    }
-
-
 def test_get_cash_snapshot_computes_cash_basis_burn_and_runway_not_net_income(monkeypatch):
     """The whole point of this tab: burn/runway come from the actual change in cash balance,
     not from accrual Net Income - this test uses deliberately different values for the two so a
@@ -608,13 +581,6 @@ def test_get_cash_snapshot_computes_cash_basis_burn_and_runway_not_net_income(mo
             "Expenses": {"84100 Legal Fees": {"Total": 2000.0}},
         },
     )
-    monkeypatch.setattr(
-        handlers.shared_qbo, "fetch_gl_account_transactions",
-        lambda *a, **k: [
-            {"date": "2026-07-30", "amount": 5391.65},
-            {"date": "2026-08-13", "amount": 5391.65},
-        ],
-    )
 
     fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
     result = handlers.get_cash_snapshot(fake_qbo, today=today)
@@ -631,8 +597,6 @@ def test_get_cash_snapshot_computes_cash_basis_burn_and_runway_not_net_income(mo
     assert result["overhead_accounts"] == [{"label": "84100 Legal Fees", "monthly_avg": 2000.0 / 3}]
     assert result["overhead_monthly_total"] == 2000.0 / 3
     assert len(result["balance_trend"]) == 6
-    assert result["known_payroll"]["amount"] == 5391.65
-    assert result["known_payroll"]["cadence_days"] == 14
 
 
 def test_get_cash_snapshot_excludes_financing_inflows_from_burn(monkeypatch):
@@ -667,7 +631,6 @@ def test_get_cash_snapshot_excludes_financing_inflows_from_burn(monkeypatch):
         handlers.shared_qbo, "fetch_profit_and_loss_by_class",
         lambda realm_id, access_token, start, end, environment="production": {},
     )
-    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_transactions", lambda *a, **k: [])
 
     fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
     result = handlers.get_cash_snapshot(fake_qbo, today=today)
@@ -701,11 +664,9 @@ def test_get_cash_snapshot_runway_is_none_when_not_burning_cash(monkeypatch):
         handlers.shared_qbo, "fetch_profit_and_loss_by_class",
         lambda realm_id, access_token, start, end, environment="production": {},
     )
-    monkeypatch.setattr(handlers.shared_qbo, "fetch_gl_account_transactions", lambda *a, **k: [])
 
     fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
     result = handlers.get_cash_snapshot(fake_qbo, today=today)
 
     assert result["monthly_burn"] < 0  # negative burn = growing cash
     assert result["runway_months"] is None
-    assert result["known_payroll"] is None

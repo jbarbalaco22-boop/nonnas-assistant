@@ -584,43 +584,10 @@ def get_monthly_trend(
     return results
 
 
-FOUNDER_PAYROLL_ACCOUNT_PREFIX = "71100 Founder/Officer Compensation"
-
-
-def _estimate_next_payroll(qbo: QboContext, today: date) -> dict | None:
-    """Looks back 120 days for Founder/Officer Compensation postings (flat, biweekly, via
-    Paychex, per the business - confirmed live 2026-08-18: five real payments at a consistent
-    14-day interval) and projects the next one from the last two payments' interval and amount.
-    Returns None if fewer than two payments were found in the window - not enough to infer a
-    cadence from.
-    """
-    lookback = today - timedelta(days=120)
-    txns = shared_qbo.fetch_gl_account_transactions(
-        qbo.realm_id, qbo.access_token, FOUNDER_PAYROLL_ACCOUNT_PREFIX, lookback, today,
-        environment=qbo.environment,
-    )
-    if len(txns) < 2:
-        return None
-    txns.sort(key=lambda t: t["date"])
-    last_date = date.fromisoformat(txns[-1]["date"])
-    prior_date = date.fromisoformat(txns[-2]["date"])
-    interval_days = (last_date - prior_date).days
-    if interval_days <= 0:
-        return None
-    next_date = last_date + timedelta(days=interval_days)
-    return {
-        "amount": txns[-1]["amount"],
-        "last_date": txns[-1]["date"],
-        "cadence_days": interval_days,
-        "next_estimated_date": next_date.isoformat(),
-    }
-
-
 def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
     """Cash-basis snapshot for the Cash & Runway tab: combined bank balance, an OPERATING burn
-    rate and runway (see below), a trailing 6-month balance trend, a full breakdown of recurring
-    fixed costs (Overhead accounts), and the one recurring obligation with a reliable automated
-    timing signal (founder payroll).
+    rate and runway (see below), a trailing 6-month balance trend, and a full breakdown of
+    recurring fixed costs (Overhead accounts).
 
     Why cash-basis, not Net Income, for burn/runway: Net Income doesn't reflect cash reality -
     inventory purchases hit cash the day they're paid for, not when later recognized as COGS.
@@ -659,8 +626,8 @@ def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
     bills/POs as forward-looking commitments (confirmed with the business 2026-08-18) - real
     Bill records exist in QBO, but their due dates consistently land the same day as, or one day
     after, the transaction date, indicating they're entered when paid, not planned ahead of
-    time. So beyond the Overhead breakdown and founder payroll's next-date estimate, anything
-    else is a manual-entry list on the frontend, not pulled by this function.
+    time. So beyond the Overhead breakdown, anything else is a manual-entry list on the
+    frontend, not pulled by this function.
     """
     today = today or date.today()
     lookback_start = today - timedelta(days=90)
@@ -668,10 +635,10 @@ def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
     bank_prefixes = account_map["bank_cash"]
     financing_prefixes = account_map.get("financing", {}).get("accounts", [])
 
-    # The four QBO pulls below don't depend on each other, so they run concurrently rather than
+    # The QBO pulls below don't depend on each other, so they run concurrently rather than
     # serially - this endpoint was slow enough on Render (~23s) to be worth it even after
     # collapsing the balance-trend loop into a single pull (see docstring).
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:
         bank_txns_future = pool.submit(
             shared_qbo.fetch_gl_account_transactions_multi,
             qbo.realm_id, qbo.access_token, bank_prefixes, date(2020, 1, 1), today, environment=qbo.environment,
@@ -684,12 +651,9 @@ def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
             shared_qbo.fetch_profit_and_loss_by_class,
             qbo.realm_id, qbo.access_token, lookback_start, today, environment=qbo.environment,
         )
-        payroll_future = pool.submit(_estimate_next_payroll, qbo, today)
-
         all_bank_txns = bank_txns_future.result()
         financing_txns = financing_future.result() if financing_future else []
         pl_data = pl_future.result()
-        known_payroll = payroll_future.result()
 
     def _balance_as_of(as_of: date) -> float:
         as_of_iso = as_of.isoformat()
@@ -750,6 +714,5 @@ def get_cash_snapshot(qbo: QboContext, today: date | None = None) -> dict:
         "overhead_accounts": overhead_accounts,
         "overhead_monthly_total": overhead_monthly_total,
         "balance_trend": balance_trend,
-        "known_payroll": known_payroll,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
