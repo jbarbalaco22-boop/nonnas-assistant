@@ -544,6 +544,8 @@
     gap: 14px;
   }
   .msg { max-width: 85%; min-width: 0; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
+  .msg ul { margin: 4px 0; padding-left: 18px; }
+  .msg li { margin-bottom: 2px; }
   .msg.user { align-self: flex-end; background: var(--user-bubble); color: white; border-bottom-right-radius: 4px; }
   .msg.assistant { align-self: flex-start; background: var(--assistant-bubble); color: var(--text); border-bottom-left-radius: 4px; }
   .msg.error { align-self: flex-start; background: var(--error-bg); color: var(--error); border-bottom-left-radius: 4px; }
@@ -2447,10 +2449,47 @@
   let chatHistory = [];  // {role, content} turns, sent with each /ask call so follow-ups
   // ("yes", "what about last month") resolve against what was actually asked before.
 
+  function escapeHtml(s) {
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  // Belt-and-suspenders: the system prompt tells the model this chat renders plain text only
+  // (no Markdown), but LLMs sometimes slip into ** or - bullets out of habit anyway. This
+  // renders only that narrow subset - not a general Markdown parser - so those cases still look
+  // right instead of showing literal asterisks/dashes.
+  function renderAssistantText(text) {
+    const format = (s) => escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    const htmlLines = [];
+    let listBuffer = [];
+    const flushList = () => {
+      if (listBuffer.length) {
+        htmlLines.push(`<ul>${listBuffer.map((l) => `<li>${l}</li>`).join("")}</ul>`);
+        listBuffer = [];
+      }
+    };
+    text.split("\n").forEach((rawLine) => {
+      const bulletMatch = rawLine.match(/^[-•]\s+(.*)/);
+      if (bulletMatch) {
+        listBuffer.push(format(bulletMatch[1]));
+      } else {
+        flushList();
+        htmlLines.push(format(rawLine));
+      }
+    });
+    flushList();
+    return htmlLines.join("<br>");
+  }
+
   function addMessage(text, className) {
     const el = document.createElement("div");
     el.className = `msg ${className}`;
-    el.textContent = text;
+    if (className === "assistant") {
+      el.innerHTML = renderAssistantText(text);
+    } else {
+      el.textContent = text;
+    }
     messagesEl.appendChild(el);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return el;
