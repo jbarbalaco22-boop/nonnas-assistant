@@ -1618,9 +1618,13 @@
   // charts, a lighter dashed-outline fill for the bar chart - so it reads as "not final yet"
   // rather than looking like a completed month.
   function renderLineChart(containerId, points, { color, format, inProgressIndex = null }) {
+    // Styling (height/stroke-width/dot sizes) intentionally matches renderMultiLineChart below -
+    // these are the same "trend chart" visual language whether the metric is single-series
+    // (Overview) or per-channel (Channels tab); they used to disagree by a few px, visible when
+    // switching tabs (real UI-review finding, 2026-08-19).
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 200);
-    const height = 150;
+    const height = 170;
     const pad = { left: 50, right: 8, top: 10, bottom: 22 };
     const values = points.map((p) => p.value);
     const { ticks, min: minV, max: maxV } = niceTicks(Math.min(...values), Math.max(...values));
@@ -1638,20 +1642,20 @@
     const solidEnd = hasInProgress ? lastIdx - 1 : lastIdx;
     const solidPathD = points.slice(0, solidEnd + 1)
       .map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(i).toFixed(1)} ${yScale(p.value).toFixed(1)}`).join(" ");
-    svg += `<path d="${solidPathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
+    svg += `<path d="${solidPathD}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`;
     if (hasInProgress) {
       svg += `<path d="M ${xScale(lastIdx - 1).toFixed(1)} ${yScale(points[lastIdx - 1].value).toFixed(1)} `
         + `L ${xScale(lastIdx).toFixed(1)} ${yScale(points[lastIdx].value).toFixed(1)}" fill="none" stroke="${color}" `
-        + `stroke-width="2.5" stroke-linecap="round" stroke-dasharray="5 4" opacity="0.6" />`;
+        + `stroke-width="2" stroke-linecap="round" stroke-dasharray="4 3" opacity="0.6" />`;
     }
     points.forEach((p, i) => {
       const inProgress = hasInProgress && i === lastIdx;
       const tip = chartTipAttrs(`${p.label}${inProgress ? " (in progress)" : ""}: ${format(p.value)}`);
       const click = p.startDate ? chartClickAttrs(p.startDate, p.endDate) : "";
-      svg += `<circle class="chart-hit" cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="10" fill="transparent" ${tip} ${click} />`;
+      svg += `<circle class="chart-hit" cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="9" fill="transparent" ${tip} ${click} />`;
       const fill = inProgress ? "var(--panel)" : color;
-      const stroke = inProgress ? `stroke="${color}" stroke-width="2"` : "";
-      svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="${inProgress ? 4 : 3.5}" fill="${fill}" ${stroke} style="pointer-events:none" />`;
+      const stroke = inProgress ? `stroke="${color}" stroke-width="1.5"` : "";
+      svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="${inProgress ? 3.5 : 3}" fill="${fill}" ${stroke} style="pointer-events:none" />`;
     });
     points.forEach((p, i) => {
       svg += `<text x="${xScale(i).toFixed(1)}" y="${height - 6}" font-size="10" fill="var(--muted)" text-anchor="middle">${p.label}</text>`;
@@ -1662,7 +1666,7 @@
   function renderStackedBarChart(containerId, periods, labels, { format, inProgressIndex = null, metricKey = "net_sales" }) {
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 200);
-    const height = 150;
+    const height = 170;
     const pad = { left: 50, right: 8, top: 10, bottom: 22 };
     const totals = periods.map((p) => CHANNELS.reduce((sum, ch) => sum + (p.channels[ch][metricKey] || 0), 0));
     const { ticks, min: minV, max: maxV } = niceTicks(0, Math.max(...totals));
@@ -1907,7 +1911,7 @@
   function renderActualProjectedChart(containerId, actualPoints, projectedPoints, format) {
     const container = document.getElementById(containerId);
     const width = Math.max(container.clientWidth, 200);
-    const height = 150;
+    const height = 170;
     const pad = { left: 50, right: 8, top: 10, bottom: 22 };
     const allPoints = [...actualPoints, ...projectedPoints];
     const values = allPoints.map((p) => p.value);
