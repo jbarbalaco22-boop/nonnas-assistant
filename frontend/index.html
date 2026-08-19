@@ -1106,6 +1106,7 @@
     cashNetIncome90d: "Accrual Net Income for the same 90-day window, shown for comparison only — it's not used to compute burn or runway. It usually differs from the real cash change because inventory purchases hit cash when paid, not when later recognized as cost of goods sold.",
     cashOverhead: "Every recurring cost not already tied to a sales channel (payroll, payroll taxes, benefits, software, legal, accounting, and similar) — shown as a trailing-90-day monthly average per account. These fluctuate some but are broadly fixed, unlike ad spend or COGS which scale with sales volume.",
     repeatPurchase: "Share of orders in the selected period from a customer who'd already ordered before, vs. their first order ever — DTC and TikTok only (Amazon and Wholesale orders rarely carry real Shopify customer identity). Subscription renewals count as repeat orders here, same as any other reorder. CAC is that channel's ad spend for the period divided by its new-customer count — not a full ROAS/margin picture, just what it cost to bring each new customer in.",
+    cashBalance: "Pulled from QuickBooks' recorded transactions, not a live feed from your bank — this can run a bit behind what you'd see logging into Chase or Highbeam directly if a transaction hasn't synced into QuickBooks yet (usually catches up within a day). This gap is real today, not a display bug — we may close it later with a direct bank connection, but for now expect the two numbers not to match exactly.",
   };
   function infoIcon(key) {
     return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
@@ -1368,6 +1369,18 @@
   let lastDashboardData = null;  // so the SKU Revenue card can reference DTC's Net Sales for
   // the same period, to explain the shipping-exclusion gap inline rather than only in a tooltip
 
+  // Every loadDashboard() call (range change, custom-range apply, chart click-to-drill-down)
+  // bumps this and fires three independent fire-and-forget follow-up fetches (SKU Revenue, SKU
+  // Units, Repeat Purchase Rate/CAC) that don't cancel each other on a later range change. Without
+  // this guard, switching ranges quickly could let a slower OLD request's response land AFTER a
+  // newer one and overwrite the UI with mismatched-period data - concretely, CAC reading
+  // lastDashboardData's ad spend from whichever period's /dashboard call happened to resolve
+  // last, divided by new-customer counts from a DIFFERENT period's /repeat-purchase-rate response
+  // (real bug, found 2026-08-19: the two numbers could silently come from different periods).
+  // Each loader captures its own requestId and checks it against the current value before
+  // rendering; a stale response is discarded instead of drawn.
+  let dashboardRequestId = 0;
+
   function renderDashboard(data) {
     lastDashboardData = data;
     document.getElementById("freshness-bar").textContent =
@@ -1493,6 +1506,7 @@
   }
 
   async function loadDashboard() {
+    const requestId = ++dashboardRequestId;  // this call's generation - see the guard's comment above
     dashboardStatus.textContent = "Loading dashboard...";
     dashboardStatus.className = "";
     dashboardStatus.style.display = "block";
@@ -1505,6 +1519,7 @@
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+      if (requestId !== dashboardRequestId) return;  // superseded by a newer range change
       if (!res.ok) {
         dashboardStatus.textContent = data.detail || "Couldn't load the dashboard.";
         dashboardStatus.className = "error";
@@ -1517,10 +1532,12 @@
       // fired only after renderDashboard sets lastDashboardData, since SKU Revenue's inline
       // shipping-exclusion note reads it. "Since Inception" is range-independent (always
       // "total ever") but still auto-loads on every dashboard load, just not on range change.
-      loadSkuRevenue();
-      loadSkuUnits();
-      loadRepeatPurchaseRate();
+      // Each gets this call's requestId so it can detect being superseded too.
+      loadSkuRevenue(requestId);
+      loadSkuUnits(requestId);
+      loadRepeatPurchaseRate(requestId);
     } catch (e) {
+      if (requestId !== dashboardRequestId) return;
       dashboardStatus.textContent = "Couldn't reach the server — check your connection and try again.";
       dashboardStatus.className = "error";
     }
@@ -2078,8 +2095,8 @@
       <div id="cash-stats">
         <div class="stat">
           <div class="stat-value">${fmtCurrency(data.cash_balance)}</div>
-          <div class="stat-label">Combined Cash Balance</div>
-          <div class="run-rate-note">as of ${fmtDate(data.as_of)}</div>
+          <div class="stat-label">Combined Cash Balance${infoIcon("cashBalance")}</div>
+          <div class="run-rate-note">as of ${fmtDate(data.as_of)} — may differ slightly from your bank's own balance</div>
         </div>
         <div class="stat">
           <div class="stat-value ${burnClass}">${burnValue}</div>
@@ -2225,7 +2242,7 @@
     `;
   }
 
-  async function loadSkuRevenue() {
+  async function loadSkuRevenue(requestId) {
     const status = document.getElementById("sku-revenue-status");
     const results = document.getElementById("sku-revenue-results");
 
@@ -2240,6 +2257,7 @@
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+      if (requestId !== dashboardRequestId) return;  // superseded by a newer range change
       if (!res.ok) {
         status.textContent = data.detail || "Couldn't load SKU revenue.";
         status.className = "error";
@@ -2360,7 +2378,7 @@
     return data;
   }
 
-  async function loadSkuUnits() {
+  async function loadSkuUnits(requestId) {
     const status = document.getElementById("sku-units-status");
     const results = document.getElementById("sku-units-results");
 
@@ -2369,6 +2387,7 @@
     results.innerHTML = "";
 
     const [periodResult, toDateResult] = await Promise.allSettled([fetchSkuUnitsPeriod(), fetchSkuUnitsToDate()]);
+    if (requestId !== dashboardRequestId) return;  // superseded by a newer range change
     const periodData = periodResult.status === "fulfilled" ? periodResult.value : null;
     const toDateData = toDateResult.status === "fulfilled" ? toDateResult.value : null;
 
@@ -2428,7 +2447,7 @@
     `;
   }
 
-  async function loadRepeatPurchaseRate() {
+  async function loadRepeatPurchaseRate(requestId) {
     const status = document.getElementById("repeat-purchase-status");
     const results = document.getElementById("repeat-purchase-results");
 
@@ -2443,6 +2462,11 @@
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+      // Superseded by a newer range change - both because this response could be stale relative
+      // to what's on screen, AND because lastDashboardData (which CAC divides ad spend from) may
+      // have already moved on to a newer period by the time this resolves (the bug this whole
+      // guard exists for - see dashboardRequestId's comment).
+      if (requestId !== dashboardRequestId) return;
       if (!res.ok) {
         status.textContent = data.detail || "Couldn't load repeat purchase rate.";
         status.className = "error";
