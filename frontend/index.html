@@ -293,6 +293,10 @@
     margin-top: 14px; font-size: 12px; color: var(--warn-text); background: var(--warn-bg);
     padding: 8px 12px; border-radius: 8px; line-height: 1.5;
   }
+  .manual-entry-note {
+    margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--warn-text);
+    background: var(--warn-bg); padding: 8px 12px; border-radius: 8px; line-height: 1.5;
+  }
 
   /* ---- Trends ---- */
   #trends-section { margin-top: 24px; }
@@ -311,6 +315,10 @@
   .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--muted); }
   .chart-legend-item { display: flex; align-items: center; gap: 5px; }
   .chart-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+  .chart-legend-swatch-dashed {
+    width: 12px; height: 0; border-top: 2px dashed var(--accent); border-radius: 0;
+    align-self: center; opacity: 0.65;
+  }
   #chart-note-discount { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
 
   /* ---- SKU Performance (Revenue + Units, paired side by side with matching headers) ---- */
@@ -347,28 +355,51 @@
   #sku-revenue-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
   #sku-revenue-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
 
-  /* ---- SKU Units (since-inception total + on-demand period pull) ---- */
-  .sku-units-subsection { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-  .sku-units-subsection:first-of-type { margin-top: 10px; padding-top: 0; border-top: none; }
-  .sku-units-subsection h4 {
-    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--muted); margin: 0 0 8px;
-  }
-  #sku-units-period-status, #sku-units-to-date-status { font-size: 13px; color: var(--slate); }
-  #sku-units-period-status.error, #sku-units-to-date-status.error { color: var(--error); }
-  #sku-units-period-results table, #sku-units-to-date-results table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  #sku-units-period-results th, #sku-units-to-date-results th {
+  /* ---- SKU Units (this-period + since-inception, one table) ---- */
+  #sku-units-status { font-size: 13px; color: var(--slate); }
+  #sku-units-status.error { color: var(--error); }
+  #sku-units-results table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #sku-units-results th {
     text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
     letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
   }
-  #sku-units-period-results th:first-child, #sku-units-to-date-results th:first-child { text-align: left; }
-  #sku-units-period-results td, #sku-units-to-date-results td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-  #sku-units-period-results td:first-child, #sku-units-to-date-results td:first-child { text-align: left; font-weight: 600; }
-  #sku-units-period-results .sku-code, #sku-units-to-date-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
-  #sku-units-period-results tfoot td, #sku-units-to-date-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
-  #sku-units-period-results tr.sku-product-row td, #sku-units-to-date-results tr.sku-product-row td { font-weight: 700; background: var(--bg); }
-  #sku-units-period-results tr.sku-variant-row td:first-child, #sku-units-to-date-results tr.sku-variant-row td:first-child { padding-left: 22px; font-weight: 500; }
-  #sku-units-period-results tr.sku-variant-row td:last-child, #sku-units-to-date-results tr.sku-variant-row td:last-child { font-weight: 500; }
+  #sku-units-results th:first-child { text-align: left; }
+  #sku-units-results td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #sku-units-results td:first-child { text-align: left; font-weight: 600; }
+  #sku-units-results .sku-code { font-size: 11px; color: var(--muted); font-weight: 400; display: block; }
+  #sku-units-results tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+  #sku-units-results tr.sku-product-row td { font-weight: 700; background: var(--bg); }
+  #sku-units-results tr.sku-variant-row td:first-child { padding-left: 22px; font-weight: 500; }
+  #sku-units-results tr.sku-variant-row td:last-child { font-weight: 500; }
+
+  /* ---- Inventory on Hand (manual placeholder pending ShipHero) ---- */
+  #inventory-card { margin-top: 20px; }
+  #inventory-card h3 { display: flex; align-items: center; gap: 8px; }
+  #inventory-list table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #inventory-list th {
+    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
+    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  #inventory-list th:first-child { text-align: left; }
+  #inventory-list td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  #inventory-list td:first-child { text-align: left; font-weight: 600; }
+  .inventory-remove-btn {
+    border: none; background: none; color: var(--error); font-size: 12px; font-weight: 600;
+    cursor: pointer; padding: 2px 4px;
+  }
+  .inventory-remove-btn:hover { text-decoration: underline; }
+  #inventory-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  #inventory-form input {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; font-family: inherit; color: var(--text); background: var(--panel);
+  }
+  #inventory-product { flex: 1 1 200px; }
+  #inventory-qty { width: 110px; }
+  #inventory-form button {
+    padding: 7px 16px; border: none; border-radius: 8px; background: var(--accent);
+    color: white; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #inventory-form button:hover { background: var(--accent-dark); }
 
   /* ---- Cash & Runway ---- */
   #cash-status { color: var(--muted); font-size: 14px; }
@@ -385,15 +416,10 @@
     margin: 0 0 12px;
   }
   #cash-overhead-card { margin-top: 20px; }
-  #cash-overhead-card h2, #cash-obligations-card h2 {
+  #cash-overhead-card h2 {
     font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
     color: var(--slate); margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
   }
-  #cash-obligations-card { margin-top: 20px; }
-  #cash-payroll-row { font-size: 13px; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; }
-  #cash-payroll-row div { display: flex; justify-content: space-between; }
-  #cash-payroll-row .metric-label { color: var(--slate); font-weight: 400; }
-  #cash-payroll-row span:last-child { font-weight: 700; color: var(--text); }
   #cash-overhead-table table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   #cash-overhead-table th {
     text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
@@ -403,36 +429,6 @@
   #cash-overhead-table td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
   #cash-overhead-table td:first-child { text-align: left; font-weight: 600; }
   #cash-overhead-table tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
-  #cash-obligations-list table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  #cash-obligations-list th {
-    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
-    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
-  }
-  #cash-obligations-list th:first-child { text-align: left; }
-  #cash-obligations-list td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-  #cash-obligations-list td:first-child { text-align: left; font-weight: 600; }
-  #cash-obligations-list tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
-  .obligation-remove-btn {
-    border: none; background: none; color: var(--error); font-size: 12px; font-weight: 600;
-    cursor: pointer; padding: 2px 4px;
-  }
-  .obligation-remove-btn:hover { text-decoration: underline; }
-  #cash-obligation-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
-  #cash-obligation-form input {
-    padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
-    font-size: 13px; font-family: inherit; color: var(--text); background: var(--panel);
-  }
-  #obligation-name { flex: 1 1 200px; }
-  #obligation-amount { width: 110px; }
-  #cash-obligation-form button {
-    padding: 7px 16px; border: none; border-radius: 8px; background: var(--accent);
-    color: white; font-size: 13px; font-weight: 600; cursor: pointer;
-  }
-  #cash-obligation-form button:hover { background: var(--accent-dark); }
-  .obligation-sync-warning {
-    margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--warn-text);
-    background: var(--warn-bg); padding: 8px 12px; border-radius: 8px; line-height: 1.5;
-  }
 
   .chart-tooltip {
     display: none;
@@ -736,18 +732,22 @@
                   <h3>SKU Units <span class="beta-tag">Beta</span></h3>
                 </div>
                 <p class="sku-revenue-note" id="sku-units-note">Selected period, and the total since inception — how this works</p>
-                <div class="sku-units-subsection">
-                  <h4>This Period</h4>
-                  <div id="sku-units-period-status"></div>
-                  <div id="sku-units-period-results"></div>
-                </div>
-                <div class="sku-units-subsection">
-                  <h4>Since Inception</h4>
-                  <div id="sku-units-to-date-status"></div>
-                  <div id="sku-units-to-date-results"></div>
-                </div>
+                <div id="sku-units-status"></div>
+                <div id="sku-units-results"></div>
               </div>
             </div>
+          </div>
+
+          <div id="inventory-card" class="card">
+            <h3>Inventory on Hand <span class="beta-tag">Placeholder</span></h3>
+            <p class="sku-revenue-note">Manually entered until a live inventory connection (ShipHero) is in place.</p>
+            <div id="inventory-list"></div>
+            <form id="inventory-form">
+              <input type="text" id="inventory-product" placeholder="Product" required />
+              <input type="number" id="inventory-qty" placeholder="Units on hand" step="1" min="0" required />
+              <button type="submit">Add / Update</button>
+            </form>
+            <div class="manual-entry-note">⚠ Stored only in this browser — not synced across devices or to a live inventory system. Update here whenever a physical count changes.</div>
           </div>
         </div>
 
@@ -762,28 +762,17 @@
                 <div class="card chart-card">
                   <h3>Combined Cash Balance</h3>
                   <div id="chart-cash-balance"></div>
+                  <div id="chart-cash-balance-legend" class="chart-legend"></div>
+                  <div id="chart-cash-balance-note"></div>
                 </div>
               </div>
             </div>
 
             <div id="cash-overhead-card" class="card">
               <h2>Recurring Fixed Costs (Overhead)<span id="cash-overhead-tooltip"></span></h2>
-              <div id="cash-payroll-row"></div>
               <div id="cash-overhead-table"></div>
             </div>
 
-            <div id="cash-obligations-card" class="card">
-              <h2>Other Known Obligations</h2>
-              <div id="cash-obligations-list"></div>
-              <form id="cash-obligation-form">
-                <input type="text" id="obligation-name" placeholder="Description" required />
-                <input type="number" id="obligation-amount" placeholder="Amount" step="0.01" min="0" required />
-                <input type="date" id="obligation-date" />
-                <button type="submit">Add</button>
-              </form>
-              <div class="obligation-sync-warning">⚠ Stored only in this browser — not synced across devices or to QuickBooks. Switching browsers or devices loses these entries.</div>
-              <p class="sku-revenue-note">Manual entries only — for anything not already covered by Overhead above (a one-off known bill, a planned purchase).</p>
-            </div>
           </div>
         </div>
       </div>
@@ -862,7 +851,7 @@
     });
     initTabs();
     initRangeControls();
-    renderObligationsList();
+    renderInventoryList();
     // Sequenced, not fired all at once: dashboard/trends/cash-snapshot are each already slow
     // (multiple sequential QBO/Shopify pulls internally), and firing all three simultaneously on
     // page load was overloading the backend enough to intermittently 502 - each of these three
@@ -879,6 +868,7 @@
   // users west of UTC).
   function pad(n) { return String(n).padStart(2, "0"); }
   function localISO(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+  function utcISO(d) { return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; }
 
   function computeRange(preset) {
     const today = new Date();
@@ -906,6 +896,18 @@
       document.getElementById(`tab-${t}`).style.display = t === name ? "block" : "none";
       document.getElementById(`tab-btn-${t}`).classList.toggle("active", t === name);
     });
+    // Cash & Runway isn't scoped by the date-range picker - it's always "as of today" (balance,
+    // burn, Overhead), so the picker doesn't apply there and showing it would imply otherwise.
+    document.getElementById("range-controls").style.display = name === "cash" ? "none" : "";
+    const freshnessBar = document.getElementById("freshness-bar");
+    if (name === "cash") {
+      freshnessBar.textContent = lastCashSnapshot
+        ? `Cash & Runway is always as of today · Live as of ${fmtDateTime(lastCashSnapshot.generated_at)}`
+        : "Cash & Runway is always as of today";
+    } else if (lastDashboardData) {
+      freshnessBar.textContent =
+        `Showing ${fmtDate(lastDashboardData.start_date)} – ${fmtDate(lastDashboardData.end_date)} · Live as of ${fmtDateTime(lastDashboardData.generated_at)}`;
+    }
     // Charts inside a hidden (display:none) tab measure 0 width when drawn, so the Channels
     // tab's chart only renders the first time you actually visit it, using whatever trend data
     // has already loaded by then - re-rendering on every visit is cheap (6 months of data) and
@@ -914,7 +916,7 @@
       renderTrendsChannels(lastTrendsPeriods);
     }
     if (name === "cash" && lastCashSnapshot) {
-      renderCashBalanceChart(lastCashSnapshot.balance_trend);
+      renderCashBalanceChart(lastCashSnapshot);
     }
   }
 
@@ -1488,8 +1490,7 @@
       // shipping-exclusion note reads it. "Since Inception" is range-independent (always
       // "total ever") but still auto-loads on every dashboard load, just not on range change.
       loadSkuRevenue();
-      loadSkuUnitsPeriod();
-      loadSkuUnitsToDate();
+      loadSkuUnits();
     } catch (e) {
       dashboardStatus.textContent = "Couldn't reach the server — check your connection and try again.";
       dashboardStatus.className = "error";
@@ -1854,9 +1855,109 @@
   let lastCashSnapshot = null;  // so switchTab can lazily render the balance chart the first
   // time the Cash tab is visited, same reasoning as lastTrendsPeriods for the Channels tab.
 
-  function renderCashBalanceChart(trend) {
-    const points = trend.map((t) => ({ label: fmtMonthLabel(t.month + "-01"), value: t.balance }));
-    renderLineChart("chart-cash-balance", points, { color: "var(--accent)", format: fmtCurrency, inProgressIndex: points.length - 1 });
+  // Linear projection from today's balance at the current operating burn rate, forward to the
+  // date it would hit $0 - purely a client-side extrapolation of numbers /cash-snapshot already
+  // returns (cash_balance, monthly_burn), not a separate backend concept. One point per full
+  // future calendar month (capped at 6, matching the historical side's density) plus the exact
+  // zero-crossing date as a final, distinctly-marked point. Returns null when there's nothing to
+  // project (cash flat or growing) - deliberately not extrapolating growth forward the same way,
+  // since a revenue-driven growth trend is far less defensible to project linearly than a
+  // largely-fixed-cost burn rate is.
+  function buildRunwayProjection(cashBalance, monthlyBurn, asOfIso) {
+    if (!(monthlyBurn > 0) || !(cashBalance > 0)) return null;
+    const dailyBurn = monthlyBurn / 30;
+    const asOf = new Date(asOfIso + "T00:00:00Z");
+    const daysToZero = cashBalance / dailyBurn;
+    const zeroDate = new Date(asOf.getTime() + daysToZero * 86400000);
+
+    const points = [];
+    let cursor = new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1, 1));
+    let guard = 0;
+    while (cursor < zeroDate && guard < 6) {
+      const days = (cursor - asOf) / 86400000;
+      points.push({
+        label: fmtMonthLabel(utcISO(cursor)),
+        value: Math.max(0, cashBalance - dailyBurn * days),
+      });
+      cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
+      guard++;
+    }
+    points.push({ label: fmtMonthLabel(utcISO(zeroDate)), value: 0, isZero: true, tipText: `Runway ends ~${fmtDate(utcISO(zeroDate))}` });
+    return { points, zeroDate };
+  }
+
+  // Extends renderLineChart's single "in progress, dashed" segment concept to a full dashed
+  // tail of arbitrary length (the projection), with the projection's final point marked
+  // distinctly (filled in --error, since it represents running out of cash) - the generic
+  // renderLineChart only dashes the last segment, which isn't enough here.
+  function renderActualProjectedChart(containerId, actualPoints, projectedPoints, format) {
+    const container = document.getElementById(containerId);
+    const width = Math.max(container.clientWidth, 200);
+    const height = 150;
+    const pad = { left: 50, right: 8, top: 10, bottom: 22 };
+    const allPoints = [...actualPoints, ...projectedPoints];
+    const values = allPoints.map((p) => p.value);
+    const { ticks, min: minV, max: maxV } = niceTicks(Math.min(0, ...values), Math.max(...values));
+    const plotW = width - pad.left - pad.right;
+    const plotH = height - pad.top - pad.bottom;
+    const n = allPoints.length;
+    const xStep = n > 1 ? plotW / (n - 1) : 0;
+    const xScale = (i) => pad.left + i * xStep;
+    const yScale = (v) => pad.top + plotH - ((v - minV) / (maxV - minV)) * plotH;
+    const actualEnd = actualPoints.length - 1;
+
+    let svg = `<svg viewBox="0 0 ${width} ${height}" style="width:100%;height:${height}px;">`;
+    svg += drawYAxis(pad, width, yScale, ticks, format);
+
+    const solidPathD = allPoints.slice(0, actualEnd + 1)
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(i).toFixed(1)} ${yScale(p.value).toFixed(1)}`).join(" ");
+    svg += `<path d="${solidPathD}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
+
+    if (projectedPoints.length > 0) {
+      const dashedPathD = allPoints.slice(actualEnd)
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(actualEnd + i).toFixed(1)} ${yScale(p.value).toFixed(1)}`).join(" ");
+      svg += `<path d="${dashedPathD}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6 4" opacity="0.65" />`;
+    }
+
+    allPoints.forEach((p, i) => {
+      const isProjected = i > actualEnd;
+      const tipText = p.tipText || `${p.label}${isProjected ? " (projected)" : ""}: ${format(p.value)}`;
+      const tip = chartTipAttrs(tipText);
+      svg += `<circle class="chart-hit" cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="9" fill="transparent" ${tip} />`;
+      const fill = p.isZero ? "var(--error)" : (isProjected ? "var(--panel)" : "var(--accent)");
+      const strokeAttrs = isProjected && !p.isZero ? `stroke="var(--accent)" stroke-width="1.5"` : "";
+      svg += `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(p.value).toFixed(1)}" r="${p.isZero ? 4.5 : 3.5}" fill="${fill}" ${strokeAttrs} style="pointer-events:none" />`;
+    });
+    allPoints.forEach((p, i) => {
+      svg += `<text x="${xScale(i).toFixed(1)}" y="${height - 6}" font-size="10" fill="${p.isZero ? "var(--error)" : "var(--muted)"}" text-anchor="middle">${p.label}</text>`;
+    });
+
+    container.innerHTML = svg + "</svg>";
+  }
+
+  function renderCashBalanceChart(data) {
+    const trend = data.balance_trend;
+    const actualPoints = trend.map((t) => ({ label: fmtMonthLabel(t.month + "-01"), value: t.balance }));
+    const projection = buildRunwayProjection(data.cash_balance, data.monthly_burn, data.as_of);
+    const projectedPoints = projection ? projection.points : [];
+    renderActualProjectedChart("chart-cash-balance", actualPoints, projectedPoints, fmtCurrency);
+
+    const legendEl = document.getElementById("chart-cash-balance-legend");
+    legendEl.innerHTML = projectedPoints.length > 0
+      ? `
+        <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--accent)"></span>Actual</span>
+        <span class="chart-legend-item"><span class="chart-legend-swatch chart-legend-swatch-dashed"></span>Projected</span>
+      `
+      : "";
+
+    const noteEl = document.getElementById("chart-cash-balance-note");
+    if (projection) {
+      noteEl.textContent = `Dashed line projects forward at the current operating burn rate (${fmtCurrency(data.monthly_burn)}/mo) - reaching $0 around ${fmtDate(utcISO(projection.zeroDate))} if that rate holds. Not a forecast of what will actually happen, just where today's rate points.`;
+    } else if (data.monthly_burn <= 0) {
+      noteEl.textContent = "Cash is currently growing on an operating basis, so there's no projected depletion date to show.";
+    } else {
+      noteEl.textContent = "";
+    }
   }
 
   function renderCashSnapshot(data) {
@@ -1911,19 +2012,6 @@
     `;
 
     document.getElementById("cash-overhead-tooltip").innerHTML = infoIcon("cashOverhead");
-
-    const payrollRow = document.getElementById("cash-payroll-row");
-    if (data.known_payroll) {
-      const p = data.known_payroll;
-      payrollRow.innerHTML = `
-        <div>
-          <span class="metric-label">Next estimated payroll (Founder/Officer Compensation, every ${p.cadence_days} days)</span>
-          <span>${fmtCurrency(p.amount)} around ${fmtDate(p.next_estimated_date)}</span>
-        </div>
-      `;
-    } else {
-      payrollRow.innerHTML = `<p class="sku-revenue-note">Not enough recent payroll history to estimate the next payment.</p>`;
-    }
 
     renderOverheadTable(data.overhead_accounts || []);
   }
@@ -1991,7 +2079,7 @@
       renderCashSnapshot(data);
       status.style.display = "none";
       content.style.display = "block";
-      if (currentTab === "cash") renderCashBalanceChart(data.balance_trend);
+      if (currentTab === "cash") renderCashBalanceChart(data);
       // else: rendered lazily by switchTab the first time the Cash tab is visited, since a
       // chart drawn while its tab is hidden would measure 0 width.
     } catch (e) {
@@ -1999,73 +2087,6 @@
       status.className = "error";
     }
   }
-
-  // ---- Cash & Runway: manual "known obligations" list (client-side only - no backend
-  // persistence exists for this yet, per get_cash_snapshot's docstring: the only obligation
-  // with a reliable automated signal today is payroll, above). ----
-  const OBLIGATIONS_KEY = "cashObligations";
-  function loadObligations() {
-    try {
-      return JSON.parse(localStorage.getItem(OBLIGATIONS_KEY)) || [];
-    } catch (e) {
-      return [];
-    }
-  }
-  function saveObligations(list) {
-    localStorage.setItem(OBLIGATIONS_KEY, JSON.stringify(list));
-  }
-  function renderObligationsList() {
-    const list = loadObligations();
-    const container = document.getElementById("cash-obligations-list");
-    if (list.length === 0) {
-      container.innerHTML = `<p class="sku-revenue-note">No manual entries yet — add anything not already covered above (a known bill, a planned purchase, etc.).</p>`;
-      return;
-    }
-    const sorted = [...list].sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
-    const total = sorted.reduce((sum, o) => sum + o.amount, 0);
-    const rows = sorted.map((o) => `
-      <tr>
-        <td>${o.name}</td>
-        <td>${o.date ? fmtDate(o.date) : "—"}</td>
-        <td>${fmtCurrency(o.amount)}</td>
-        <td><button type="button" class="obligation-remove-btn" data-id="${o.id}">Remove</button></td>
-      </tr>
-    `).join("");
-    container.innerHTML = `
-      <table>
-        <thead><tr><th>Description</th><th>Date</th><th>Amount</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="2">Total</td><td>${fmtCurrency(total)}</td><td></td></tr></tfoot>
-      </table>
-    `;
-    container.querySelectorAll(".obligation-remove-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        saveObligations(loadObligations().filter((o) => o.id !== btn.dataset.id));
-        renderObligationsList();
-      });
-    });
-  }
-  document.getElementById("cash-obligation-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const nameInput = document.getElementById("obligation-name");
-    const amountInput = document.getElementById("obligation-amount");
-    const dateInput = document.getElementById("obligation-date");
-    const amount = parseFloat(amountInput.value);
-    if (!nameInput.value.trim() || !Number.isFinite(amount)) return;
-    const list = loadObligations();
-    list.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: nameInput.value.trim(),
-      amount,
-      date: dateInput.value || null,
-    });
-    saveObligations(list);
-    renderObligationsList();
-    nameInput.value = "";
-    amountInput.value = "";
-    dateInput.value = "";
-    nameInput.focus();
-  });
 
   // ---- SKU Revenue (on-demand, no caching - see server.py's /sku-revenue docstring) ----
   function renderSkuRevenue(data) {
@@ -2164,149 +2185,195 @@
     return list;
   }
 
-  function renderSkuUnitsToDate(data) {
-    const results = document.getElementById("sku-units-to-date-results");
-    const skus = Object.entries(data.skus || {});
-    if (skus.length === 0) {
+  function mergeSkuUnitsData(periodData, toDateData) {
+    const periodSkus = (periodData && periodData.skus) || {};
+    const toDateSkus = (toDateData && toDateData.skus) || {};
+    const allSkus = new Set([...Object.keys(periodSkus), ...Object.keys(toDateSkus)]);
+    const merged = {};
+    allSkus.forEach((sku) => {
+      const p = periodSkus[sku];
+      const t = toDateSkus[sku];
+      merged[sku] = {
+        name: (t && t.name) || (p && p.name) || null,
+        product: (t && t.product) || (p && p.product) || (p && p.name) || sku,
+        units_period: p ? p.units : 0,
+        units_to_date: t ? t.units_to_date : 0,
+      };
+    });
+    return merged;
+  }
+
+  function renderSkuUnitsTable(periodData, toDateData) {
+    const results = document.getElementById("sku-units-results");
+    const merged = mergeSkuUnitsData(periodData, toDateData);
+    const entries = Object.entries(merged);
+    if (entries.length === 0) {
       results.innerHTML = `<p class="sku-revenue-note">No units found.</p>`;
       return;
     }
     const unitsFor = (m) => m.units_to_date;
-    const groups = groupSkusByProduct(skus, unitsFor);
-    let total = 0;
+    const groups = groupSkusByProduct(entries, unitsFor);
+    let totalPeriod = 0;
+    let totalToDate = 0;
     const rows = groups.map((g) => {
-      total += g.total;
-      const variantRows = g.variants.length > 1 ? g.variants.map(([sku, m]) => `
-        <tr class="sku-variant-row">
-          <td>↳ ${m.name || sku}<span class="sku-code">${sku}</span></td>
-          <td>${fmtNumber(m.units_to_date)}</td>
-        </tr>
-      `).join("") : "";
+      const groupPeriod = g.variants.reduce((sum, [, m]) => sum + m.units_period, 0);
+      totalPeriod += groupPeriod;
+      totalToDate += g.total;
+      const variantRows = g.variants.length > 1 ? g.variants.map(([sku, m]) => {
+        const label = m.name
+          ? `${m.name}<span class="sku-code">${sku}</span>`
+          : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
+        return `
+          <tr class="sku-variant-row">
+            <td>↳ ${label}</td>
+            <td>${fmtNumber(m.units_period)}</td>
+            <td>${fmtNumber(m.units_to_date)}</td>
+          </tr>
+        `;
+      }).join("") : "";
       return `
-        <tr class="sku-product-row"><td>${g.product}</td><td>${fmtNumber(g.total)}</td></tr>
+        <tr class="sku-product-row"><td>${g.product}</td><td>${fmtNumber(groupPeriod)}</td><td>${fmtNumber(g.total)}</td></tr>
         ${variantRows}
       `;
     }).join("");
     results.innerHTML = `
       <table>
-        <thead><tr><th>Product</th><th>Units to Date</th></tr></thead>
+        <thead><tr><th>Product</th><th>Units This Period</th><th>Units to Date</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td></tr></tfoot>
+        <tfoot><tr><td>Total</td><td>${fmtNumber(totalPeriod)}</td><td>${fmtNumber(totalToDate)}</td></tr></tfoot>
       </table>
     `;
-    if (data.gap_days && data.gap_days.length > 0) {
-      const gapText = data.gap_days.map((g) => `${fmtDate(g.start)}–${fmtDate(g.end)}`).join(", ");
+    const gapDays = (toDateData && toDateData.gap_days) || (periodData && periodData.gap_days) || [];
+    if (gapDays.length > 0) {
+      const gapText = gapDays.map((g) => `${fmtDate(g.start)}–${fmtDate(g.end)}`).join(", ");
       results.insertAdjacentHTML("beforeend", `<p class="sku-revenue-note">No data available for: ${gapText} — outside both the live-retrievable window and the historical reference's whole-month coverage.</p>`);
     }
   }
 
-  function renderSkuUnitsPeriod(data) {
-    const results = document.getElementById("sku-units-period-results");
-    const skus = Object.entries(data.skus || {});
-    if (skus.length === 0) {
-      results.innerHTML = `<p class="sku-revenue-note">No units found for this range.</p>`;
+  async function fetchSkuUnitsPeriod() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const params = new URLSearchParams({ start_date: currentRange.start, end_date: currentRange.end });
+    const res = await fetch(`${API_BASE}/sku-units?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Couldn't load SKU units for this period.");
+    return data;
+  }
+
+  async function fetchSkuUnitsToDate() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const res = await fetch(`${API_BASE}/sku-units-to-date`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Couldn't load units to date.");
+    return data;
+  }
+
+  async function loadSkuUnits() {
+    const status = document.getElementById("sku-units-status");
+    const results = document.getElementById("sku-units-results");
+
+    status.textContent = "Pulling live and historical unit data...";
+    status.className = "";
+    results.innerHTML = "";
+
+    const [periodResult, toDateResult] = await Promise.allSettled([fetchSkuUnitsPeriod(), fetchSkuUnitsToDate()]);
+    const periodData = periodResult.status === "fulfilled" ? periodResult.value : null;
+    const toDateData = toDateResult.status === "fulfilled" ? toDateResult.value : null;
+
+    if (!periodData && !toDateData) {
+      status.textContent = "Couldn't reach the server — check your connection and try again.";
+      status.className = "error";
       return;
     }
-    const unitsFor = (m) => m.units;
-    const groups = groupSkusByProduct(skus, unitsFor);
-    let total = 0;
-    const rows = groups.map((g) => {
-      total += g.total;
-      const variantRows = g.variants.map(([sku, m]) => {
-        const label = m.name
-          ? `${m.name}<span class="sku-code">${sku}</span>`
-          : `${sku}<span class="sku-code">Not in the SKU registry</span>`;
-        // "channels" (raw order/line-item counts) is only present when this period was answered
-        // purely from live Shopify data - a historical-reference month has no per-channel detail,
-        // only a monthly total, so there's nothing honest to show underneath in that case.
-        let detail = "";
-        if (m.channels) {
-          const orders = Object.values(m.channels).reduce((a, b) => a + b, 0);
-          const channelText = CHANNELS.filter((ch) => m.channels[ch]).map((ch) => `${ch} ${fmtNumber(m.channels[ch])}`).join(" · ");
-          const packNote = m.pack_size > 1 ? ` orders (×${m.pack_size} = ${fmtNumber(m.units)} units)` : " orders";
-          detail = `<span class="sku-code">${fmtNumber(orders)}${packNote}${channelText ? " — " + channelText : ""}</span>`;
-        }
-        return `
-          <tr class="sku-variant-row">
-            <td>↳ ${label}${detail}</td>
-            <td>${fmtNumber(m.units)}</td>
-          </tr>
-        `;
-      }).join("");
-      const showProductRow = g.variants.length > 1;
-      return showProductRow
-        ? `<tr class="sku-product-row"><td>${g.product}</td><td>${fmtNumber(g.total)}</td></tr>${variantRows}`
-        : variantRows;
-    }).join("");
-    results.innerHTML = `
+
+    renderSkuUnitsTable(periodData, toDateData);
+
+    const parts = [
+      periodData
+        ? `This period: ${fmtDate(periodData.start_date)} – ${fmtDate(periodData.end_date)}`
+        : `This period: ${periodResult.reason.message || "unavailable"}`,
+      toDateData
+        ? `since inception through ${fmtDate(toDateData.live_to)} (reference through ${toDateData.reference_through || "—"})`
+        : `since inception: ${toDateResult.reason.message || "unavailable"}`,
+    ];
+    const asOf = (toDateData && toDateData.as_of) || (periodData && periodData.as_of);
+    status.textContent = parts.join(" · ") + (asOf ? ` · as of ${fmtDateTime(asOf)}` : "");
+    status.className = (!periodData || !toDateData) ? "error" : "";
+  }
+
+  // ---- Inventory on Hand (manual placeholder, client-side only - no ShipHero connection yet) ----
+  const INVENTORY_KEY = "inventoryOnHand";
+  function loadInventory() {
+    try {
+      return JSON.parse(localStorage.getItem(INVENTORY_KEY)) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function saveInventory(list) {
+    localStorage.setItem(INVENTORY_KEY, JSON.stringify(list));
+  }
+  function renderInventoryList() {
+    const list = loadInventory();
+    const container = document.getElementById("inventory-list");
+    if (list.length === 0) {
+      container.innerHTML = `<p class="sku-revenue-note">No manual entries yet — add each product's current on-hand quantity.</p>`;
+      return;
+    }
+    const sorted = [...list].sort((a, b) => a.product.localeCompare(b.product));
+    const total = sorted.reduce((sum, i) => sum + i.qty, 0);
+    const rows = sorted.map((i) => `
+      <tr>
+        <td>${i.product}</td>
+        <td>${fmtNumber(i.qty)}</td>
+        <td>${fmtDate(i.updatedAt)}</td>
+        <td><button type="button" class="inventory-remove-btn" data-id="${i.id}">Remove</button></td>
+      </tr>
+    `).join("");
+    container.innerHTML = `
       <table>
-        <thead><tr><th>Product</th><th>Units</th></tr></thead>
+        <thead><tr><th>Product</th><th>On Hand</th><th>Updated</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td></tr></tfoot>
+        <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td><td colspan="2"></td></tr></tfoot>
       </table>
     `;
-    if (data.gap_days && data.gap_days.length > 0) {
-      const gapText = data.gap_days.map((g) => `${fmtDate(g.start)}–${fmtDate(g.end)}`).join(", ");
-      results.insertAdjacentHTML("beforeend", `<p class="sku-revenue-note">No data available for: ${gapText} — outside both the live-retrievable window and the historical reference's whole-month coverage.</p>`);
-    }
-  }
-
-  async function loadSkuUnitsToDate() {
-    const status = document.getElementById("sku-units-to-date-status");
-    const results = document.getElementById("sku-units-to-date-results");
-
-    status.textContent = "Pulling reference history and live current-month data...";
-    status.className = "";
-    results.innerHTML = "";
-
-    const token = localStorage.getItem(TOKEN_KEY);
-    try {
-      const res = await fetch(`${API_BASE}/sku-units-to-date`, {
-        headers: { Authorization: `Bearer ${token}` },
+    container.querySelectorAll(".inventory-remove-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        saveInventory(loadInventory().filter((i) => i.id !== btn.dataset.id));
+        renderInventoryList();
       });
-      const data = await res.json();
-      if (!res.ok) {
-        status.textContent = data.detail || "Couldn't load units to date.";
-        status.className = "error";
-        return;
-      }
-      renderSkuUnitsToDate(data);
-      status.textContent =
-        `Since inception through ${fmtDate(data.live_to)} · reference through ${data.reference_through || "—"}, `
-        + `live from ${fmtDate(data.live_from)} · as of ${fmtDateTime(data.as_of)}`;
-    } catch (e) {
-      status.textContent = "Couldn't reach the server — check your connection and try again.";
-      status.className = "error";
-    }
+    });
   }
-
-  async function loadSkuUnitsPeriod() {
-    const status = document.getElementById("sku-units-period-status");
-    const results = document.getElementById("sku-units-period-results");
-
-    status.textContent = "Pulling live Shopify data for the selected period...";
-    status.className = "";
-    results.innerHTML = "";
-
-    const token = localStorage.getItem(TOKEN_KEY);
-    try {
-      const params = new URLSearchParams({ start_date: currentRange.start, end_date: currentRange.end });
-      const res = await fetch(`${API_BASE}/sku-units?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+  document.getElementById("inventory-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const productInput = document.getElementById("inventory-product");
+    const qtyInput = document.getElementById("inventory-qty");
+    const qty = parseInt(qtyInput.value, 10);
+    const productName = productInput.value.trim();
+    if (!productName || !Number.isFinite(qty)) return;
+    const list = loadInventory();
+    const existing = list.find((i) => i.product.toLowerCase() === productName.toLowerCase());
+    const today = localISO(new Date());
+    if (existing) {
+      existing.qty = qty;
+      existing.updatedAt = today;
+    } else {
+      list.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        product: productName,
+        qty,
+        updatedAt: today,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        status.textContent = data.detail || "Couldn't load SKU units.";
-        status.className = "error";
-        return;
-      }
-      renderSkuUnitsPeriod(data);
-      status.textContent = `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.as_of)}`;
-    } catch (e) {
-      status.textContent = "Couldn't reach the server — check your connection and try again.";
-      status.className = "error";
     }
-  }
+    saveInventory(list);
+    renderInventoryList();
+    productInput.value = "";
+    qtyInput.value = "";
+    productInput.focus();
+  });
 
   // ---- Chat ----
   let chatHistory = [];  // {role, content} turns, sent with each /ask call so follow-ups
