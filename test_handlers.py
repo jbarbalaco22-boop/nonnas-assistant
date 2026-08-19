@@ -324,7 +324,9 @@ def test_repeat_purchase_rate_splits_new_vs_returning_by_channel(monkeypatch):
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: orders)
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
+
+    assert result["truncated"] is False  # well within the live window relative to "today"
 
     dtc = result["channels"]["DTC"]
     assert dtc["new_orders"] == 1
@@ -348,7 +350,7 @@ def test_repeat_purchase_rate_counts_guest_checkout_as_unknown_not_new_or_return
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: orders)
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
 
     dtc = result["channels"]["DTC"]
     assert dtc["unknown_orders"] == 1
@@ -361,10 +363,57 @@ def test_repeat_purchase_rate_none_when_no_orders_at_all(monkeypatch):
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: [])
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
 
     assert result["channels"]["DTC"]["repeat_purchase_rate"] is None
     assert result["channels"]["TikTok"]["repeat_purchase_rate"] is None
+
+
+def test_repeat_purchase_rate_clamps_start_past_live_window(monkeypatch):
+    """The real bug this guards against (found 2026-08-19): a request starting well before
+    Shopify's live-search retention window silently got zero orders for the missing portion,
+    with the response claiming to cover the full requested range. start_date here (2026-01-01)
+    is ~230 days before today - only the trailing SHOPIFY_LIVE_LOOKBACK_DAYS should actually
+    get queried, and the response must say so."""
+    captured = {}
+
+    def _fake_fetch(domain, token, start, end):
+        captured["start"] = start
+        captured["end"] = end
+        return []
+
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", _fake_fetch)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    today = date(2026, 8, 19)
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-01-01", "2026-08-19", today=today)
+
+    expected_data_start = today - timedelta(days=handlers.SHOPIFY_LIVE_LOOKBACK_DAYS)
+    assert captured["start"] == expected_data_start  # the actual Shopify call was clamped
+    assert result["requested_start_date"] == "2026-01-01"
+    assert result["data_start_date"] == expected_data_start.isoformat()
+    assert result["truncated"] is True
+    assert "2026-01-01" in result["caveat"]
+    assert expected_data_start.isoformat() in result["caveat"]
+
+
+def test_repeat_purchase_rate_not_truncated_when_start_within_live_window(monkeypatch):
+    captured = {}
+
+    def _fake_fetch(domain, token, start, end):
+        captured["start"] = start
+        return []
+
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", _fake_fetch)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    today = date(2026, 8, 19)
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=today)
+
+    assert captured["start"] == date(2026, 8, 1)  # not clamped - well within the live window
+    assert result["truncated"] is False
+    assert result["data_start_date"] == "2026-08-01"
+    assert result["caveat"] == handlers.REPEAT_RATE_CAVEAT  # the plain caveat, not the truncation one
 
 
 def test_sku_units_to_date_combines_reference_and_live(monkeypatch):

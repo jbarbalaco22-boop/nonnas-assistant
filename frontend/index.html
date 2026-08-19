@@ -2473,7 +2473,19 @@
         return;
       }
       renderRepeatPurchaseTable(data);
-      status.textContent = `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.pulled_at)}`;
+      if (data.truncated) {
+        // Real bug found 2026-08-19: a request reaching back further than Shopify's live-search
+        // window used to silently return partial data labeled as if it covered the full
+        // requested range. Now the backend clamps and reports it - surface that prominently
+        // rather than as a footnote, since the numbers genuinely don't cover what was asked for.
+        status.textContent =
+          `Only covers ${fmtDate(data.data_start_date)} – ${fmtDate(data.end_date)}, not the full range back to `
+          + `${fmtDate(data.requested_start_date)} — Shopify's live order data doesn't reach back that far. `
+          + `Live as of ${fmtDateTime(data.pulled_at)}`;
+        status.className = "error";
+      } else {
+        status.textContent = `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.pulled_at)}`;
+      }
     } catch (e) {
       status.textContent = "Couldn't reach the server — check your connection and try again.";
       status.className = "error";

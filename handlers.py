@@ -148,23 +148,42 @@ REPEAT_RATE_CAVEAT = (
 )
 
 
-def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date: str) -> dict:
+def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date: str, today: date | None = None) -> dict:
     """Live pull: what share of orders in a period came from a customer who'd already ordered
     before, vs. their first order ever - DTC and TikTok only (see REPEAT_RATE_CAVEAT).
 
     "First order ever" is judged against the customer's full order history, not just what's
     inside [start_date, end_date) - shared_shopify.fetch_orders_with_customers nests each
-    customer's own earliest order id in the same call, confirmed live not to be limited by the
-    narrower live-search retention window that bounds fetch_orders' bulk date-range search.
+    customer's own earliest order id in the same call. That NESTED per-customer lookup isn't
+    limited by Shopify's live-search retention window (confirmed live 2026-08-19: it found real
+    orders from April and September 2025 for customers surfaced via a recent order) - but the
+    OUTER bulk date-range order search this function starts from uses the exact same query shape
+    as fetch_orders, and IS bound by that same ~55-60 day window (SHOPIFY_LIVE_LOOKBACK_DAYS).
+    A request that reaches further back than that silently got zero orders for the missing
+    portion until this was caught (real bug, found 2026-08-19: a "Jan 1 - Aug 19" request
+    returned real-looking numbers that were actually just late June onward, with no indication
+    anything was missing). Unlike SKU units, there's no historical-reference fallback possible
+    here - reconstructing "was this customer new or returning" for a past date needs the same
+    live per-customer lookup this function already relies on, which itself depends on first
+    finding the order via the very same bulk search that's limited. So instead of guessing or
+    silently under-counting, a request that reaches past the live window gets its start clamped
+    to the live boundary, with `requested_start_date` (what was asked for) and `data_start_date`
+    (what was actually queried) both returned so a caller can tell the two apart and warn.
 
     A subscriber's recurring billing charges are ordinary Shopify orders like any other - each
     renewal after their first counts as a repeat order here. That's not a bug: it's real repeat
     revenue, just driven by auto-billing rather than someone actively choosing to reorder. If
     that distinction matters for a given question, it isn't split out yet.
     """
+    today = today or date.today()
+    live_boundary = today - timedelta(days=SHOPIFY_LIVE_LOOKBACK_DAYS)
+    requested_start = date.fromisoformat(start_date)
+    data_start = max(requested_start, live_boundary)
+    truncated = data_start > requested_start
+
     orders = shared_shopify.fetch_orders_with_customers(
         shopify.domain, shopify.access_token,
-        date.fromisoformat(start_date), date.fromisoformat(end_date),
+        data_start, date.fromisoformat(end_date),
     )
     buckets = {
         ch: {"new_orders": 0, "returning_orders": 0, "unknown_orders": 0, "new_customers": set()}
@@ -195,12 +214,24 @@ def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date:
             "repeat_purchase_rate": (b["returning_orders"] / known_total) if known_total else None,
         }
 
+    caveat = REPEAT_RATE_CAVEAT
+    if truncated:
+        caveat = (
+            f"Only covers {data_start.isoformat()} onward, not the full requested range starting "
+            f"{requested_start.isoformat()} — Shopify's live order search doesn't reliably reach "
+            f"back further than about {SHOPIFY_LIVE_LOOKBACK_DAYS} days, and there's no historical "
+            f"reference for this data the way SKU units has. {REPEAT_RATE_CAVEAT}"
+        )
+
     return {
         "start_date": start_date,
         "end_date": end_date,
+        "requested_start_date": requested_start.isoformat(),
+        "data_start_date": data_start.isoformat(),
+        "truncated": truncated,
         "pulled_at": datetime.now(timezone.utc).isoformat(),
         "channels": results,
-        "caveat": REPEAT_RATE_CAVEAT,
+        "caveat": caveat,
     }
 
 

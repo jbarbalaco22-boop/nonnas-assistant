@@ -164,7 +164,9 @@ def repeat_purchase_rate_endpoint(
 ) -> dict:
     """What share of orders in a period came from a customer who'd already ordered before -
     DTC and TikTok only, see get_repeat_purchase_rate's docstring for why Amazon/Wholesale are
-    excluded and how subscription renewals are counted."""
+    excluded and how subscription renewals are counted. A start_date past Shopify's live-search
+    window (~55-60 days back) gets clamped - response includes requested_start_date/
+    data_start_date/truncated so the caller can tell and warn, rather than silently under-count."""
     shopify = _get_shopify_context()
     try:
         return get_repeat_purchase_rate(shopify, start_date, end_date)
