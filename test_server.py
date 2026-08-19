@@ -279,6 +279,48 @@ def test_sku_units_returns_502_on_failure(monkeypatch):
     assert "Shopify is down" in response.json()["detail"]
 
 
+def test_repeat_purchase_rate_rejects_missing_auth():
+    response = client.get("/repeat-purchase-rate?start_date=2026-08-01&end_date=2026-08-17")
+    assert response.status_code == 401
+
+
+def test_repeat_purchase_rate_requires_date_range():
+    response = client.get("/repeat-purchase-rate", headers=AUTH_HEADER)
+    assert response.status_code == 422
+
+
+def test_repeat_purchase_rate_passes_through_date_range(monkeypatch):
+    captured = {}
+
+    def _fake_get_repeat_purchase_rate(shopify, start_date, end_date):
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        return {"channels": {}}
+
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+    monkeypatch.setattr(server, "get_repeat_purchase_rate", _fake_get_repeat_purchase_rate)
+
+    response = client.get(
+        "/repeat-purchase-rate?start_date=2026-08-10&end_date=2026-08-12", headers=AUTH_HEADER
+    )
+    assert response.status_code == 200
+    assert captured == {"start_date": "2026-08-10", "end_date": "2026-08-12"}
+
+
+def test_repeat_purchase_rate_returns_502_on_failure(monkeypatch):
+    monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+
+    def _boom(shopify, start_date, end_date):
+        raise RuntimeError("Shopify is down")
+
+    monkeypatch.setattr(server, "get_repeat_purchase_rate", _boom)
+    response = client.get(
+        "/repeat-purchase-rate?start_date=2026-08-01&end_date=2026-08-17", headers=AUTH_HEADER
+    )
+    assert response.status_code == 502
+    assert "Shopify is down" in response.json()["detail"]
+
+
 def test_sku_units_to_date_rejects_missing_auth():
     response = client.get("/sku-units-to-date")
     assert response.status_code == 401

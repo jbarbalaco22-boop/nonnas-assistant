@@ -137,6 +137,73 @@ def get_channel_units_live(shopify: ShopifyContext, start_date: str, end_date: s
     }
 
 
+REPEAT_RATE_CHANNELS = ["DTC", "TikTok"]  # Amazon/Wholesale orders rarely carry real Shopify
+# customer identity - same reliability split as everything else channel-level in this app.
+
+REPEAT_RATE_CAVEAT = (
+    "DTC and TikTok only — Amazon and Wholesale orders rarely carry real Shopify customer "
+    "identity, so new-vs-returning can't be judged for them. Subscription renewals (Appstle) "
+    "count as repeat orders here, same as any other reorder — subscriptions are classified as "
+    "DTC (same bucket as regular web checkout), not split out separately."
+)
+
+
+def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date: str) -> dict:
+    """Live pull: what share of orders in a period came from a customer who'd already ordered
+    before, vs. their first order ever - DTC and TikTok only (see REPEAT_RATE_CAVEAT).
+
+    "First order ever" is judged against the customer's full order history, not just what's
+    inside [start_date, end_date) - shared_shopify.fetch_orders_with_customers nests each
+    customer's own earliest order id in the same call, confirmed live not to be limited by the
+    narrower live-search retention window that bounds fetch_orders' bulk date-range search.
+
+    A subscriber's recurring billing charges are ordinary Shopify orders like any other - each
+    renewal after their first counts as a repeat order here. That's not a bug: it's real repeat
+    revenue, just driven by auto-billing rather than someone actively choosing to reorder. If
+    that distinction matters for a given question, it isn't split out yet.
+    """
+    orders = shared_shopify.fetch_orders_with_customers(
+        shopify.domain, shopify.access_token,
+        date.fromisoformat(start_date), date.fromisoformat(end_date),
+    )
+    buckets = {
+        ch: {"new_orders": 0, "returning_orders": 0, "unknown_orders": 0, "new_customers": set()}
+        for ch in REPEAT_RATE_CHANNELS
+    }
+    for order in orders:
+        channel = classify_source(order.get("sourceName"))
+        if channel not in buckets:
+            continue
+        is_new = shared_shopify.is_first_order(order)
+        b = buckets[channel]
+        if is_new is None:
+            b["unknown_orders"] += 1
+        elif is_new:
+            b["new_orders"] += 1
+            b["new_customers"].add(order["customer"]["id"])
+        else:
+            b["returning_orders"] += 1
+
+    results = {}
+    for ch, b in buckets.items():
+        known_total = b["new_orders"] + b["returning_orders"]
+        results[ch] = {
+            "new_orders": b["new_orders"],
+            "returning_orders": b["returning_orders"],
+            "unknown_orders": b["unknown_orders"],
+            "new_customers": len(b["new_customers"]),
+            "repeat_purchase_rate": (b["returning_orders"] / known_total) if known_total else None,
+        }
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "pulled_at": datetime.now(timezone.utc).isoformat(),
+        "channels": results,
+        "caveat": REPEAT_RATE_CAVEAT,
+    }
+
+
 def get_sku_units_live(shopify: ShopifyContext, start_date: str, end_date: str) -> dict:
     """Live pull: units sold per SKU, further broken out by channel, for an arbitrary date
     range - built ahead of the multi-SKU rollout (2026-08-18), for when "units by channel"

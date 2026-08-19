@@ -27,6 +27,7 @@ from handlers import (
     get_cash_snapshot,
     get_dashboard_data,
     get_monthly_trend,
+    get_repeat_purchase_rate,
     get_sku_revenue_live,
     get_sku_units_for_period,
     get_sku_units_to_date,
@@ -153,6 +154,23 @@ def sku_units_endpoint(
     except Exception as e:
         logger.exception("sku-units failed for %s to %s", start_date, end_date)
         raise HTTPException(status_code=502, detail=f"Failed to load SKU units: {e}") from e
+
+
+@app.get("/repeat-purchase-rate")
+def repeat_purchase_rate_endpoint(
+    start_date: str,
+    end_date: str,
+    user: str = Depends(verify_token),
+) -> dict:
+    """What share of orders in a period came from a customer who'd already ordered before -
+    DTC and TikTok only, see get_repeat_purchase_rate's docstring for why Amazon/Wholesale are
+    excluded and how subscription renewals are counted."""
+    shopify = _get_shopify_context()
+    try:
+        return get_repeat_purchase_rate(shopify, start_date, end_date)
+    except Exception as e:
+        logger.exception("repeat-purchase-rate failed for %s to %s", start_date, end_date)
+        raise HTTPException(status_code=502, detail=f"Failed to load repeat purchase rate: {e}") from e
 
 
 @app.get("/sku-units-to-date")

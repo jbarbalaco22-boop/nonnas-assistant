@@ -304,6 +304,69 @@ def test_sku_units_live_multiplies_pack_size_into_units(monkeypatch):
     assert result["skus"]["OO-OO-ORG-501"]["units"] == 15
 
 
+def _order_with_customer(order_id, customer_id, first_order_id, source_name="web"):
+    return {
+        "id": order_id,
+        "sourceName": source_name,
+        "customer": {"id": customer_id, "orders": {"nodes": [{"id": first_order_id}]}},
+    }
+
+
+def test_repeat_purchase_rate_splits_new_vs_returning_by_channel(monkeypatch):
+    orders = [
+        _order_with_customer("order-1", "cust-1", "order-1", source_name="web"),  # new, DTC
+        _order_with_customer("order-2", "cust-2", "order-0", source_name="web"),  # returning, DTC
+        _order_with_customer("order-3", "cust-3", "order-3", source_name="tiktok"),  # new, TikTok
+        _order_with_customer("order-4", "cust-4", "order-4", source_name="amazon"),  # excluded channel
+        _order_with_customer("order-5", "cust-1", "order-1", source_name="subscription_contract_checkout_one"),
+        # ^ subscription renewal for cust-1, whose first order was "order-1" -> returning, DTC
+    ]
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: orders)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17")
+
+    dtc = result["channels"]["DTC"]
+    assert dtc["new_orders"] == 1
+    assert dtc["returning_orders"] == 2  # includes the subscription renewal
+    assert dtc["new_customers"] == 1
+    assert dtc["repeat_purchase_rate"] == 2 / 3
+
+    tiktok = result["channels"]["TikTok"]
+    assert tiktok["new_orders"] == 1
+    assert tiktok["returning_orders"] == 0
+    assert tiktok["repeat_purchase_rate"] == 0.0
+
+    assert "Amazon" not in result["channels"]
+    assert "Wholesale" not in result["channels"]
+
+
+def test_repeat_purchase_rate_counts_guest_checkout_as_unknown_not_new_or_returning(monkeypatch):
+    orders = [
+        {"id": "order-1", "sourceName": "web", "customer": None},
+    ]
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: orders)
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17")
+
+    dtc = result["channels"]["DTC"]
+    assert dtc["unknown_orders"] == 1
+    assert dtc["new_orders"] == 0
+    assert dtc["returning_orders"] == 0
+    assert dtc["repeat_purchase_rate"] is None  # no known orders to compute a rate from
+
+
+def test_repeat_purchase_rate_none_when_no_orders_at_all(monkeypatch):
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: [])
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17")
+
+    assert result["channels"]["DTC"]["repeat_purchase_rate"] is None
+    assert result["channels"]["TikTok"]["repeat_purchase_rate"] is None
+
+
 def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
     """Delegates to get_sku_units_for_period with start_date=2020-01-01 - the live window is
     SHOPIFY_LIVE_LOOKBACK_DAYS wide (not "current month only"), so a month whose end falls on or
