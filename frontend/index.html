@@ -253,6 +253,13 @@
     font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
     color: var(--slate); margin: 0 0 12px;
   }
+  #repeat-purchase-card { margin-top: 20px; }
+  #repeat-purchase-card h2 {
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--slate); margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
+  }
+  #repeat-purchase-status { font-size: 13px; color: var(--slate); }
+  #repeat-purchase-status.error { color: var(--error); }
   .text-toggle-btn {
     border: none; background: none; color: var(--indigo); font-size: 12px; font-weight: 600;
     cursor: pointer; padding: 0; margin-bottom: 10px;
@@ -689,6 +696,12 @@
             <div id="channel-comparison-table"></div>
           </div>
 
+          <div id="repeat-purchase-card" class="card">
+            <h2>Repeat Purchase Rate<span id="repeat-purchase-tooltip"></span></h2>
+            <div id="repeat-purchase-status"></div>
+            <div id="repeat-purchase-results"></div>
+          </div>
+
           <div id="trends-section-channels">
             <h2>Trends</h2>
             <div id="trends-status-channels">Loading trends...</div>
@@ -1092,6 +1105,7 @@
     cashRunway: "Combined cash balance ÷ operating monthly burn rate. Not shown when cash is growing on an operating basis (no burn to divide by).",
     cashNetIncome90d: "Accrual Net Income for the same 90-day window, shown for comparison only — it's not used to compute burn or runway. It usually differs from the real cash change because inventory purchases hit cash when paid, not when later recognized as cost of goods sold.",
     cashOverhead: "Every recurring cost not already tied to a sales channel (payroll, payroll taxes, benefits, software, legal, accounting, and similar) — shown as a trailing-90-day monthly average per account. These fluctuate some but are broadly fixed, unlike ad spend or COGS which scale with sales volume.",
+    repeatPurchase: "Share of orders in the selected period from a customer who'd already ordered before, vs. their first order ever — DTC and TikTok only (Amazon and Wholesale orders rarely carry real Shopify customer identity). Subscription renewals count as repeat orders here, same as any other reorder.",
   };
   function infoIcon(key) {
     return `<span class="info-icon" tabindex="0">&#9432;<span class="tooltip-text">${TOOLTIPS[key]}</span></span>`;
@@ -1100,6 +1114,7 @@
   // hand-duplicating the tooltip markup in the HTML template.
   document.getElementById("sku-revenue-note").insertAdjacentHTML("beforeend", infoIcon("skuRevenue"));
   document.getElementById("sku-units-note").insertAdjacentHTML("beforeend", infoIcon("skuUnits"));
+  document.getElementById("repeat-purchase-tooltip").innerHTML = infoIcon("repeatPurchase");
   // Tooltips open on hover on desktop (CSS-only); this makes tap work on mobile, where
   // hover doesn't exist - tapping one icon opens it and closes any other open one.
   document.addEventListener("click", (e) => {
@@ -1504,6 +1519,7 @@
       // "total ever") but still auto-loads on every dashboard load, just not on range change.
       loadSkuRevenue();
       loadSkuUnits();
+      loadRepeatPurchaseRate();
     } catch (e) {
       dashboardStatus.textContent = "Couldn't reach the server — check your connection and try again.";
       dashboardStatus.className = "error";
@@ -2375,6 +2391,62 @@
     const asOf = (toDateData && toDateData.as_of) || (periodData && periodData.as_of);
     status.textContent = parts.join(" · ") + (asOf ? ` · as of ${fmtDateTime(asOf)}` : "");
     status.className = (!periodData || !toDateData) ? "error" : "";
+  }
+
+  // ---- Repeat Purchase Rate (Channels tab) ----
+  function renderRepeatPurchaseTable(data) {
+    const results = document.getElementById("repeat-purchase-results");
+    const channels = ["DTC", "TikTok"];
+    const rows = channels.map((ch) => {
+      const m = data.channels[ch];
+      if (!m) return "";
+      const rate = m.repeat_purchase_rate !== null && m.repeat_purchase_rate !== undefined
+        ? fmtPercent(m.repeat_purchase_rate) : "—";
+      return `
+        <tr>
+          <td>${ch}</td>
+          <td>${rate}</td>
+          <td>${fmtNumber(m.new_customers)}</td>
+          <td>${fmtNumber(m.returning_orders)}</td>
+        </tr>
+      `;
+    }).join("");
+    results.innerHTML = `
+      <div class="table-scroll">
+        <table class="comparison-table">
+          <thead><tr><th>Channel</th><th>Repeat Rate</th><th>New Customers</th><th>Returning Orders</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async function loadRepeatPurchaseRate() {
+    const status = document.getElementById("repeat-purchase-status");
+    const results = document.getElementById("repeat-purchase-results");
+
+    status.textContent = "Pulling live order data...";
+    status.className = "";
+    results.innerHTML = "";
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const params = new URLSearchParams({ start_date: currentRange.start, end_date: currentRange.end });
+      const res = await fetch(`${API_BASE}/repeat-purchase-rate?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.textContent = data.detail || "Couldn't load repeat purchase rate.";
+        status.className = "error";
+        return;
+      }
+      renderRepeatPurchaseTable(data);
+      status.textContent = `Showing ${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · Live as of ${fmtDateTime(data.pulled_at)}`;
+    } catch (e) {
+      status.textContent = "Couldn't reach the server — check your connection and try again.";
+      status.className = "error";
+    }
   }
 
   // ---- Inventory on Hand (manual placeholder, client-side only - no ShipHero connection yet) ----
