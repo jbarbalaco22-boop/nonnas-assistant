@@ -231,8 +231,8 @@
     align-items: start;
   }
   #channel-grid-summary { margin-bottom: 20px; }
-  .channel-secondary-col { display: flex; flex-direction: column; gap: 16px; }
   .channel-card h3 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+  .channel-icon { flex-shrink: 0; }
   .channel-card.secondary { opacity: 0.92; }
   .chip {
     display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em;
@@ -1193,7 +1193,7 @@
     const card = document.createElement("div");
     card.className = "card channel-card";
     card.innerHTML = `
-      <h3>${ch}</h3>
+      <h3>${channelIconHtml(ch)}${ch}</h3>
       <div class="revenue-share">${fmtPercent(m.revenue_share)} of total revenue</div>
       <div class="primary-stat ${contribClass}">${fmtSignedCurrency(m.contribution)}</div>
       <div class="primary-stat-label">Contribution before overhead (${fmtPercent(m.contribution_pct)} margin)${infoIcon("contribution")}</div>
@@ -1222,7 +1222,7 @@
     const card = document.createElement("div");
     card.className = "card channel-card";
     card.innerHTML = `
-      <h3>${ch}</h3>
+      <h3>${channelIconHtml(ch)}${ch}</h3>
       <div class="revenue-share">${fmtPercent(m.revenue_share)} of total revenue</div>
       <div class="primary-stat ${contribClass}">${fmtSignedCurrency(m.contribution)}</div>
       <div class="primary-stat-label">Contribution before overhead (${fmtPercent(m.contribution_pct)} margin)${infoIcon("contribution")}</div>
@@ -1252,38 +1252,28 @@
         <div class="muted-note">Limited data this period${infoIcon("limitedData")}</div>
       `
       : `<div class="muted-note secondary-empty">No orders this period${ch === "Wholesale" ? infoIcon("wholesaleEmpty") : ""}</div>`;
-    card.innerHTML = `<h3>${ch}${chip}</h3>${body}`;
+    card.innerHTML = `<h3>${channelIconHtml(ch)}${ch}${chip}</h3>${body}`;
     return card;
   }
   function renderChannelGrid(data, gridId, buildCard) {
+    // Uniform 2x2 grid, same card size for every channel - the earlier asymmetric layout (wide
+    // cards for revenue-significant channels + a narrow sidebar for the rest) read as implying
+    // Amazon/Wholesale mattered less, which wasn't the intent; content still differs by tier
+    // (full metrics vs. a lighter Limited/empty card), just not the footprint.
     const grid = document.getElementById(gridId);
     grid.innerHTML = "";
+    grid.style.gridTemplateColumns = "repeat(2, 1fr)";
 
     const entries = CHANNELS.map((ch) => ({ ch, m: data.channels[ch] })).filter((e) => e.m);
     entries.forEach((e) => { e.tier = classifyChannel(e.ch, e.m); });
     entries.sort((a, b) => b.m.revenue_share - a.m.revenue_share);
 
-    const full = entries.filter((e) => e.tier === "full");
-    const secondary = entries.filter((e) => e.tier !== "full");
     const priorPeriod = data.prior_period;
     const rangeLabel = priorPeriod ? fmtShortRange(priorPeriod.start_date, priorPeriod.end_date) : "";
 
-    if (full.length === 0 || secondary.length === 0) {
-      // Either every channel gets full treatment, or every channel is quiet/limited - the
-      // asymmetric "wide cards + narrow sidebar" layout only makes sense with an actual mix.
-      grid.style.gridTemplateColumns = "repeat(auto-fit, minmax(240px, 1fr))";
-      entries.forEach(({ ch, m, tier }) => {
-        grid.appendChild(tier === "full" ? buildCard(ch, m, priorPeriod, rangeLabel) : buildSecondaryChannelCard(ch, m));
-      });
-      return;
-    }
-
-    grid.style.gridTemplateColumns = `repeat(${full.length}, 1.3fr) 0.85fr`;
-    full.forEach(({ ch, m }) => grid.appendChild(buildCard(ch, m, priorPeriod, rangeLabel)));
-    const col = document.createElement("div");
-    col.className = "channel-secondary-col";
-    secondary.forEach(({ ch, m }) => col.appendChild(buildSecondaryChannelCard(ch, m)));
-    grid.appendChild(col);
+    entries.forEach(({ ch, m, tier }) => {
+      grid.appendChild(tier === "full" ? buildCard(ch, m, priorPeriod, rangeLabel) : buildSecondaryChannelCard(ch, m));
+    });
   }
 
   // Persists across re-renders (range change, tab switch) so the reader's choice isn't reset
@@ -1513,6 +1503,18 @@
     DTC: "var(--chart-dtc)", TikTok: "var(--chart-tiktok)",
     Amazon: "var(--chart-amazon)", Wholesale: "var(--chart-wholesale)",
   };
+  // Generic icon-font-style glyphs (bag/note/package/grid), not the actual trademarked
+  // TikTok/Amazon/Shopify marks - Wholesale has no real logo to reference, so it gets a custom
+  // "stacked units" mark. Colored via currentColor so CSS controls it per usage.
+  const CHANNEL_ICON_PATHS = {
+    DTC: '<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+    TikTok: '<path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+    Amazon: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    Wholesale: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  };
+  function channelIconHtml(ch, size = 16) {
+    return `<svg class="channel-icon" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${CHANNEL_COLORS[ch]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CHANNEL_ICON_PATHS[ch]}</svg>`;
+  }
   function fmtMonthLabel(iso) {
     return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
   }
