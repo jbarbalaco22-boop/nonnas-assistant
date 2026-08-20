@@ -1105,7 +1105,8 @@
     cashRunway: "Combined cash balance ÷ operating monthly burn rate. Not shown when cash is growing on an operating basis (no burn to divide by).",
     cashNetIncome90d: "Accrual Net Income for the same 90-day window, shown for comparison only — it's not used to compute burn or runway. It usually differs from the real cash change because inventory purchases hit cash when paid, not when later recognized as cost of goods sold.",
     cashOverhead: "Every recurring cost not already tied to a sales channel (payroll, payroll taxes, benefits, software, legal, accounting, and similar) — shown as a trailing-90-day monthly average per account. These fluctuate some but are broadly fixed, unlike ad spend or COGS which scale with sales volume.",
-    repeatPurchase: "Share of orders in the selected period from a customer who'd already ordered before, vs. their first order ever — DTC and TikTok only (Amazon and Wholesale orders rarely carry real Shopify customer identity). Subscription renewals count as repeat orders here, same as any other reorder. CAC is that channel's ad spend for the period divided by its new-customer count — not a full ROAS/margin picture, just what it cost to bring each new customer in.",
+    repeatPurchase: "Share of orders in the selected period from a customer who'd already ordered before, vs. their first order ever — DTC and TikTok only (Amazon and Wholesale orders rarely carry real Shopify customer identity). Subscription renewals count as repeat orders here, same as any other reorder.",
+    blendedCac: "Total marketing spend ÷ total new customers, blended across DTC + TikTok — not split by channel, on purpose. A per-channel version (ad spend only) undercounted true cost, since Creative Agency Fees and Attribution Tools aren't attributable to one channel and were left out entirely. This includes all ad accounts (Meta, Google, TikTok, Amazon, Marketplace, plus any Paid Collaborations/Affiliate spend), Creative Agency Fees, Attribution Tools, and Email/SMS marketing. If Amazon or Wholesale has any ad spend, it's counted in the total here even though their new customers aren't in the denominator (no reliable identity there) — so this leans slightly conservative (higher) rather than under-counting.",
     cashBalance: "Pulled from QuickBooks' recorded transactions, not a live feed from your bank — this can run a bit behind what you'd see logging into Chase or Highbeam directly if a transaction hasn't synced into QuickBooks yet (usually catches up within a day). This gap is real today, not a display bug — we may close it later with a direct bank connection, but for now expect the two numbers not to match exactly.",
   };
   function infoIcon(key) {
@@ -2412,11 +2413,12 @@
     status.className = (!periodData || !toDateData) ? "error" : "";
   }
 
-  // ---- Repeat Purchase Rate + CAC (Channels tab) ----
-  // CAC needs no backend call of its own - ad spend per channel already comes back on
-  // /dashboard's data.company/channels (lastDashboardData, set by renderDashboard, which always
-  // runs before this since both are triggered from the same loadDashboard success handler), and
-  // new-customer counts already come back on this endpoint's own response.
+  // ---- Repeat Purchase Rate + blended CAC (Channels tab) ----
+  // CAC is BLENDED (company-wide), not per-channel, computed server-side by
+  // get_repeat_purchase_rate - a per-channel version (ad spend / that channel's new customers)
+  // shipped first but was found (2026-08-19) to silently exclude real marketing spend that
+  // isn't attributable to one channel (Creative Agency Fees, Attribution Tools), understating
+  // true acquisition cost. Blended sidesteps the per-channel allocation problem entirely.
   function renderRepeatPurchaseTable(data) {
     const results = document.getElementById("repeat-purchase-results");
     const channels = ["DTC", "TikTok"];
@@ -2425,22 +2427,31 @@
       if (!m) return "";
       const rate = m.repeat_purchase_rate !== null && m.repeat_purchase_rate !== undefined
         ? fmtPercent(m.repeat_purchase_rate) : "—";
-      const ads = lastDashboardData && lastDashboardData.channels[ch] ? lastDashboardData.channels[ch].ads : null;
-      const cac = ads !== null && ads !== undefined && m.new_customers > 0 ? ads / m.new_customers : null;
       return `
         <tr>
           <td>${ch}</td>
           <td>${rate}</td>
           <td>${fmtNumber(m.new_customers)}</td>
-          <td>${cac !== null ? fmtCurrency(cac) : "—"}</td>
           <td>${fmtNumber(m.returning_orders)}</td>
         </tr>
       `;
     }).join("");
+    const cac = data.blended_cac;
+    const spend = data.blended_marketing_spend;
+    const blendedNote = spend
+      ? `${fmtCurrency(spend.total)} total marketing spend (${fmtCurrency(spend.ads)} ads, `
+        + `${fmtCurrency(spend.creative_and_attribution)} creative/attribution, ${fmtCurrency(spend.other_marketing)} email/SMS) `
+        + `÷ ${fmtNumber(data.blended_new_customers)} new customers (DTC + TikTok)`
+      : "";
     results.innerHTML = `
+      <div class="stat" style="margin-bottom: 16px;">
+        <div class="stat-value">${cac !== null && cac !== undefined ? fmtCurrency(cac) : "—"}</div>
+        <div class="stat-label">Blended CAC${infoIcon("blendedCac")}</div>
+        <div class="run-rate-note">${blendedNote}</div>
+      </div>
       <div class="table-scroll">
         <table class="comparison-table">
-          <thead><tr><th>Channel</th><th>Repeat Rate</th><th>New Customers</th><th>CAC</th><th>Returning Orders</th></tr></thead>
+          <thead><tr><th>Channel</th><th>Repeat Rate</th><th>New Customers</th><th>Returning Orders</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
