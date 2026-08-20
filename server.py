@@ -166,10 +166,13 @@ def repeat_purchase_rate_endpoint(
     DTC and TikTok only, see get_repeat_purchase_rate's docstring for why Amazon/Wholesale are
     excluded and how subscription renewals are counted. A start_date past Shopify's live-search
     window (~55-60 days back) gets clamped - response includes requested_start_date/
-    data_start_date/truncated so the caller can tell and warn, rather than silently under-count."""
+    data_start_date/truncated so the caller can tell and warn, rather than silently under-count.
+    Also returns a blended (company-wide) CAC - see get_repeat_purchase_rate's docstring for why
+    that's a separate figure from any per-channel one."""
     shopify = _get_shopify_context()
+    qbo = _get_qbo_context()
     try:
-        return get_repeat_purchase_rate(shopify, start_date, end_date)
+        return get_repeat_purchase_rate(shopify, qbo, start_date, end_date)
     except Exception as e:
         logger.exception("repeat-purchase-rate failed for %s to %s", start_date, end_date)
         raise HTTPException(status_code=502, detail=f"Failed to load repeat purchase rate: {e}") from e

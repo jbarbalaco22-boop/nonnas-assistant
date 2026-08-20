@@ -292,12 +292,13 @@ def test_repeat_purchase_rate_requires_date_range():
 def test_repeat_purchase_rate_passes_through_date_range(monkeypatch):
     captured = {}
 
-    def _fake_get_repeat_purchase_rate(shopify, start_date, end_date):
+    def _fake_get_repeat_purchase_rate(shopify, qbo, start_date, end_date):
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         return {"channels": {}}
 
     monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
     monkeypatch.setattr(server, "get_repeat_purchase_rate", _fake_get_repeat_purchase_rate)
 
     response = client.get(
@@ -309,8 +310,9 @@ def test_repeat_purchase_rate_passes_through_date_range(monkeypatch):
 
 def test_repeat_purchase_rate_returns_502_on_failure(monkeypatch):
     monkeypatch.setattr(server, "_get_shopify_context", lambda: None)
+    monkeypatch.setattr(server, "_get_qbo_context", lambda: None)
 
-    def _boom(shopify, start_date, end_date):
+    def _boom(shopify, qbo, start_date, end_date):
         raise RuntimeError("Shopify is down")
 
     monkeypatch.setattr(server, "get_repeat_purchase_rate", _boom)

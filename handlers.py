@@ -148,9 +148,22 @@ REPEAT_RATE_CAVEAT = (
 )
 
 
-def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date: str, today: date | None = None) -> dict:
+def get_repeat_purchase_rate(
+    shopify: ShopifyContext, qbo: QboContext, start_date: str, end_date: str, today: date | None = None,
+) -> dict:
     """Live pull: what share of orders in a period came from a customer who'd already ordered
     before, vs. their first order ever - DTC and TikTok only (see REPEAT_RATE_CAVEAT).
+
+    Also returns a BLENDED (company-wide, not per-channel) CAC: total marketing spend
+    (channel_financials.compute_blended_marketing_spend - ads plus Creative Agency Fees and
+    Attribution Tools, which per-channel CAC couldn't include since neither is attributable to
+    one channel) divided by total new customers across DTC + TikTok. Built 2026-08-19 after the
+    business flagged that per-channel CAC (ads only) understated true acquisition cost - a
+    blended figure sidesteps the per-channel allocation problem entirely rather than guessing at
+    a split. Amazon/Wholesale ad spend (if any) is included in the spend total but their
+    customers aren't reflected in the denominator (no reliable identity there - see
+    REPEAT_RATE_CAVEAT), so this is a conservative/upper-bound estimate of blended CAC, not a
+    perfectly closed ratio - the caveat says so explicitly.
 
     "First order ever" is judged against the customer's full order history, not just what's
     inside [start_date, end_date) - shared_shopify.fetch_orders_with_customers nests each
@@ -185,6 +198,11 @@ def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date:
         shopify.domain, shopify.access_token,
         data_start, date.fromisoformat(end_date),
     )
+    pl_data = shared_qbo.fetch_profit_and_loss_by_class(
+        qbo.realm_id, qbo.access_token, data_start, date.fromisoformat(end_date), environment=qbo.environment,
+    )
+    marketing_spend = channel_financials.compute_blended_marketing_spend(pl_data)
+
     buckets = {
         ch: {"new_orders": 0, "returning_orders": 0, "unknown_orders": 0, "new_customers": set()}
         for ch in REPEAT_RATE_CHANNELS
@@ -214,6 +232,9 @@ def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date:
             "repeat_purchase_rate": (b["returning_orders"] / known_total) if known_total else None,
         }
 
+    blended_new_customers = sum(len(b["new_customers"]) for b in buckets.values())
+    blended_cac = (marketing_spend["total"] / blended_new_customers) if blended_new_customers else None
+
     caveat = REPEAT_RATE_CAVEAT
     if truncated:
         caveat = (
@@ -231,6 +252,9 @@ def get_repeat_purchase_rate(shopify: ShopifyContext, start_date: str, end_date:
         "truncated": truncated,
         "pulled_at": datetime.now(timezone.utc).isoformat(),
         "channels": results,
+        "blended_new_customers": blended_new_customers,
+        "blended_marketing_spend": marketing_spend,
+        "blended_cac": blended_cac,
         "caveat": caveat,
     }
 

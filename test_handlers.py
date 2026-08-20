@@ -312,6 +312,15 @@ def _order_with_customer(order_id, customer_id, first_order_id, source_name="web
     }
 
 
+def _mock_no_marketing_spend_pl(monkeypatch):
+    """Most repeat-purchase-rate tests don't care about the blended-CAC side - this keeps that
+    P&L pull harmless (zero spend) so it doesn't affect their existing assertions."""
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_profit_and_loss_by_class",
+        lambda realm_id, access_token, start, end, environment="production": {},
+    )
+
+
 def test_repeat_purchase_rate_splits_new_vs_returning_by_channel(monkeypatch):
     orders = [
         _order_with_customer("order-1", "cust-1", "order-1", source_name="web"),  # new, DTC
@@ -322,9 +331,11 @@ def test_repeat_purchase_rate_splits_new_vs_returning_by_channel(monkeypatch):
         # ^ subscription renewal for cust-1, whose first order was "order-1" -> returning, DTC
     ]
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: orders)
+    _mock_no_marketing_spend_pl(monkeypatch)
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, fake_qbo, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
 
     assert result["truncated"] is False  # well within the live window relative to "today"
 
@@ -342,15 +353,19 @@ def test_repeat_purchase_rate_splits_new_vs_returning_by_channel(monkeypatch):
     assert "Amazon" not in result["channels"]
     assert "Wholesale" not in result["channels"]
 
+    assert result["blended_new_customers"] == 2  # 1 DTC + 1 TikTok
+
 
 def test_repeat_purchase_rate_counts_guest_checkout_as_unknown_not_new_or_returning(monkeypatch):
     orders = [
         {"id": "order-1", "sourceName": "web", "customer": None},
     ]
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: orders)
+    _mock_no_marketing_spend_pl(monkeypatch)
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, fake_qbo, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
 
     dtc = result["channels"]["DTC"]
     assert dtc["unknown_orders"] == 1
@@ -361,12 +376,15 @@ def test_repeat_purchase_rate_counts_guest_checkout_as_unknown_not_new_or_return
 
 def test_repeat_purchase_rate_none_when_no_orders_at_all(monkeypatch):
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: [])
+    _mock_no_marketing_spend_pl(monkeypatch)
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, fake_qbo, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
 
     assert result["channels"]["DTC"]["repeat_purchase_rate"] is None
     assert result["channels"]["TikTok"]["repeat_purchase_rate"] is None
+    assert result["blended_cac"] is None  # no new customers to divide spend by
 
 
 def test_repeat_purchase_rate_clamps_start_past_live_window(monkeypatch):
@@ -383,10 +401,12 @@ def test_repeat_purchase_rate_clamps_start_past_live_window(monkeypatch):
         return []
 
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", _fake_fetch)
+    _mock_no_marketing_spend_pl(monkeypatch)
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
     today = date(2026, 8, 19)
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-01-01", "2026-08-19", today=today)
+    result = handlers.get_repeat_purchase_rate(fake_shopify, fake_qbo, "2026-01-01", "2026-08-19", today=today)
 
     expected_data_start = today - timedelta(days=handlers.SHOPIFY_LIVE_LOOKBACK_DAYS)
     assert captured["start"] == expected_data_start  # the actual Shopify call was clamped
@@ -405,15 +425,48 @@ def test_repeat_purchase_rate_not_truncated_when_start_within_live_window(monkey
         return []
 
     monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", _fake_fetch)
+    _mock_no_marketing_spend_pl(monkeypatch)
 
     fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
     today = date(2026, 8, 19)
-    result = handlers.get_repeat_purchase_rate(fake_shopify, "2026-08-01", "2026-08-17", today=today)
+    result = handlers.get_repeat_purchase_rate(fake_shopify, fake_qbo, "2026-08-01", "2026-08-17", today=today)
 
     assert captured["start"] == date(2026, 8, 1)  # not clamped - well within the live window
     assert result["truncated"] is False
     assert result["data_start_date"] == "2026-08-01"
     assert result["caveat"] == handlers.REPEAT_RATE_CAVEAT  # the plain caveat, not the truncation one
+
+
+def test_repeat_purchase_rate_blended_cac_includes_creative_and_attribution(monkeypatch):
+    """The exact gap the business flagged (2026-08-19): per-channel CAC only divided by
+    ads.by_channel, missing Creative Agency Fees and Attribution Tools entirely since neither is
+    attributable to one channel. Blended CAC must include both, plus channel-unallocated ad
+    accounts, divided by new customers summed across DTC + TikTok."""
+    orders = [
+        _order_with_customer("order-1", "cust-1", "order-1", source_name="web"),  # new, DTC
+        _order_with_customer("order-2", "cust-2", "order-2", source_name="tiktok"),  # new, TikTok
+    ]
+    monkeypatch.setattr(handlers.shared_shopify, "fetch_orders_with_customers", lambda domain, token, start, end: orders)
+    pl_data = {
+        "Expenses": {
+            "61100 Meta Ads": {"Not Specified": 100.0},
+            "62300 Creative Agency Fees": {"Not Specified": 50.0},
+            "63110 Attribution Tools": {"Not Specified": 50.0},
+        },
+    }
+    monkeypatch.setattr(
+        handlers.shared_qbo, "fetch_profit_and_loss_by_class",
+        lambda realm_id, access_token, start, end, environment="production": pl_data,
+    )
+
+    fake_shopify = handlers.ShopifyContext("example.myshopify.com", "fake-token")
+    fake_qbo = handlers.QboContext("fake-token", "fake-realm", "production")
+    result = handlers.get_repeat_purchase_rate(fake_shopify, fake_qbo, "2026-08-01", "2026-08-17", today=date(2026, 8, 19))
+
+    assert result["blended_new_customers"] == 2  # 1 DTC + 1 TikTok
+    assert result["blended_marketing_spend"]["total"] == 200.0  # 100 ads + 50 + 50
+    assert result["blended_cac"] == 100.0  # 200 / 2
 
 
 def test_sku_units_to_date_combines_reference_and_live(monkeypatch):
