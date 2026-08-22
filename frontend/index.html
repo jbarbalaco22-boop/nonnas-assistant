@@ -1534,8 +1534,14 @@
       // shipping-exclusion note reads it. "Since Inception" is range-independent (always
       // "total ever") but still auto-loads on every dashboard load, just not on range change.
       // Each gets this call's requestId so it can detect being superseded too.
-      loadSkuRevenue(requestId);
-      loadSkuUnits(requestId);
+      loadSkuUnits(requestId); // Shopify-only - safe to run alongside the QBO-touching ones below
+      // SKU Revenue and Repeat Purchase Rate (blended CAC) both touch QBO, which rotates its
+      // refresh token on every use - a real, previously production-breaking race (twice before
+      // this session) if two QBO calls land on Render close enough together that the second one
+      // uses a token the first has already rotated out from under it. /dashboard's own QBO call
+      // just fully completed above, so it's not part of this - only these two need sequencing
+      // against EACH OTHER, not fired together.
+      await loadSkuRevenue(requestId);
       loadRepeatPurchaseRate(requestId);
     } catch (e) {
       if (requestId !== dashboardRequestId) return;
