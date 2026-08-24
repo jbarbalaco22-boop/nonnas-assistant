@@ -300,11 +300,6 @@
     margin-top: 14px; font-size: 12px; color: var(--warn-text); background: var(--warn-bg);
     padding: 8px 12px; border-radius: 8px; line-height: 1.5;
   }
-  .manual-entry-note {
-    margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--warn-text);
-    background: var(--warn-bg); padding: 8px 12px; border-radius: 8px; line-height: 1.5;
-  }
-
   /* ---- Trends ---- */
   #trends-section { margin-top: 24px; }
   #trends-section h2 {
@@ -379,34 +374,9 @@
   #sku-units-results tr.sku-variant-row td:first-child { padding-left: 22px; font-weight: 500; }
   #sku-units-results tr.sku-variant-row td:last-child { font-weight: 500; }
 
-  /* ---- Inventory on Hand (manual placeholder pending ShipHero) ---- */
+  /* ---- Inventory on Hand (static placeholder pending ShipHero) ---- */
   #inventory-card { margin-top: 20px; }
   #inventory-card h3 { display: flex; align-items: center; gap: 8px; }
-  #inventory-list table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  #inventory-list th {
-    text-align: right; font-size: 11px; color: var(--slate); text-transform: uppercase;
-    letter-spacing: 0.04em; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border);
-  }
-  #inventory-list th:first-child { text-align: left; }
-  #inventory-list td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-  #inventory-list td:first-child { text-align: left; font-weight: 600; }
-  .inventory-remove-btn {
-    border: none; background: none; color: var(--error); font-size: 12px; font-weight: 600;
-    cursor: pointer; padding: 2px 4px;
-  }
-  .inventory-remove-btn:hover { text-decoration: underline; }
-  #inventory-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
-  #inventory-form input {
-    padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
-    font-size: 13px; font-family: inherit; color: var(--text); background: var(--panel);
-  }
-  #inventory-product { flex: 1 1 200px; }
-  #inventory-qty { width: 110px; }
-  #inventory-form button {
-    padding: 7px 16px; border: none; border-radius: 8px; background: var(--accent);
-    color: white; font-size: 13px; font-weight: 600; cursor: pointer;
-  }
-  #inventory-form button:hover { background: var(--accent-dark); }
 
   /* ---- Cash & Runway ---- */
   #cash-status { color: var(--muted); font-size: 14px; }
@@ -757,14 +727,7 @@
 
           <div id="inventory-card" class="card">
             <h3>Inventory on Hand <span class="beta-tag">Placeholder</span></h3>
-            <p class="sku-revenue-note">Manually entered until a live inventory connection (ShipHero) is in place.</p>
-            <div id="inventory-list"></div>
-            <form id="inventory-form">
-              <input type="text" id="inventory-product" placeholder="Product" required />
-              <input type="number" id="inventory-qty" placeholder="Units on hand" step="1" min="0" required />
-              <button type="submit">Add / Update</button>
-            </form>
-            <div class="manual-entry-note">⚠ Stored only in this browser — not synced across devices or to a live inventory system. Update here whenever a physical count changes.</div>
+            <p class="sku-revenue-note">Not connected yet — this will show live counts once a ShipHero integration is in place.</p>
           </div>
         </div>
 
@@ -881,7 +844,6 @@
     });
     initTabs();
     initRangeControls();
-    renderInventoryList();
     // Sequenced, not fired all at once: dashboard/trends/cash-snapshot are each already slow
     // (multiple sequential QBO/Shopify pulls internally), and firing all three simultaneously on
     // page load was overloading the backend enough to intermittently 502 - each of these three
@@ -2524,76 +2486,9 @@
     }
   }
 
-  // ---- Inventory on Hand (manual placeholder, client-side only - no ShipHero connection yet) ----
-  const INVENTORY_KEY = "inventoryOnHand";
-  function loadInventory() {
-    try {
-      return JSON.parse(localStorage.getItem(INVENTORY_KEY)) || [];
-    } catch (e) {
-      return [];
-    }
-  }
-  function saveInventory(list) {
-    localStorage.setItem(INVENTORY_KEY, JSON.stringify(list));
-  }
-  function renderInventoryList() {
-    const list = loadInventory();
-    const container = document.getElementById("inventory-list");
-    if (list.length === 0) {
-      container.innerHTML = `<p class="sku-revenue-note">No manual entries yet — add each product's current on-hand quantity.</p>`;
-      return;
-    }
-    const sorted = [...list].sort((a, b) => a.product.localeCompare(b.product));
-    const total = sorted.reduce((sum, i) => sum + i.qty, 0);
-    const rows = sorted.map((i) => `
-      <tr>
-        <td>${i.product}</td>
-        <td>${fmtNumber(i.qty)}</td>
-        <td>${fmtDate(i.updatedAt)}</td>
-        <td><button type="button" class="inventory-remove-btn" data-id="${i.id}">Remove</button></td>
-      </tr>
-    `).join("");
-    container.innerHTML = `
-      <table>
-        <thead><tr><th>Product</th><th>On Hand</th><th>Updated</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr><td>Total</td><td>${fmtNumber(total)}</td><td colspan="2"></td></tr></tfoot>
-      </table>
-    `;
-    container.querySelectorAll(".inventory-remove-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        saveInventory(loadInventory().filter((i) => i.id !== btn.dataset.id));
-        renderInventoryList();
-      });
-    });
-  }
-  document.getElementById("inventory-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const productInput = document.getElementById("inventory-product");
-    const qtyInput = document.getElementById("inventory-qty");
-    const qty = parseInt(qtyInput.value, 10);
-    const productName = productInput.value.trim();
-    if (!productName || !Number.isFinite(qty)) return;
-    const list = loadInventory();
-    const existing = list.find((i) => i.product.toLowerCase() === productName.toLowerCase());
-    const today = localISO(new Date());
-    if (existing) {
-      existing.qty = qty;
-      existing.updatedAt = today;
-    } else {
-      list.push({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        product: productName,
-        qty,
-        updatedAt: today,
-      });
-    }
-    saveInventory(list);
-    renderInventoryList();
-    productInput.value = "";
-    qtyInput.value = "";
-    productInput.focus();
-  });
+  // ---- Inventory on Hand: static placeholder pending a real ShipHero connection - no manual
+  // entry (removed 2026-08-19; a hand-maintained number was more upkeep than value until the
+  // real integration exists). ----
 
   // ---- Chat ----
   let chatHistory = [];  // {role, content} turns, sent with each /ask call so follow-ups
