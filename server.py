@@ -93,9 +93,9 @@ def dashboard_endpoint(
     if not start_date:
         start_date = date.today().replace(day=1).isoformat()
 
-    qbo = _get_qbo_context()
-    shopify = _get_shopify_context()
     try:
+        qbo = _get_qbo_context()
+        shopify = _get_shopify_context()
         return get_dashboard_data(qbo, shopify, start_date, end_date)
     except Exception as e:
         logger.exception("dashboard failed for %s to %s", start_date, end_date)
@@ -112,9 +112,9 @@ def trends_endpoint(
     the single-period dashboard shows for that same range. Several sequential QBO/Shopify
     pulls, so slower than /dashboard - the frontend loads this after the main dashboard, not
     blocking it."""
-    qbo = _get_qbo_context()
-    shopify = _get_shopify_context()
     try:
+        qbo = _get_qbo_context()
+        shopify = _get_shopify_context()
         return {"periods": get_monthly_trend(qbo, shopify, months)}
     except Exception as e:
         logger.exception("trends failed for last %s months", months)
@@ -131,8 +131,8 @@ def sku_revenue_endpoint(
     Data" button's backing call, not something polled automatically. start_date/end_date are
     required (unlike /dashboard) since this is always an explicit, deliberate action, not a
     page-load default."""
-    qbo = _get_qbo_context()
     try:
+        qbo = _get_qbo_context()
         return get_sku_revenue_live(qbo, start_date, end_date)
     except Exception as e:
         logger.exception("sku-revenue failed for %s to %s", start_date, end_date)
@@ -148,8 +148,8 @@ def sku_units_endpoint(
     """On-demand pull for an arbitrary period - the "SKU Units" card's period-specific button.
     Combines live Shopify data with the historical reference as needed - see
     get_sku_units_for_period's docstring for why a pure live pull isn't enough for older ranges."""
-    shopify = _get_shopify_context()
     try:
+        shopify = _get_shopify_context()
         return get_sku_units_for_period(shopify, start_date, end_date)
     except Exception as e:
         logger.exception("sku-units failed for %s to %s", start_date, end_date)
@@ -169,9 +169,9 @@ def repeat_purchase_rate_endpoint(
     data_start_date/truncated so the caller can tell and warn, rather than silently under-count.
     Also returns a blended (company-wide) CAC - see get_repeat_purchase_rate's docstring for why
     that's a separate figure from any per-channel one."""
-    shopify = _get_shopify_context()
-    qbo = _get_qbo_context()
     try:
+        shopify = _get_shopify_context()
+        qbo = _get_qbo_context()
         return get_repeat_purchase_rate(shopify, qbo, start_date, end_date)
     except Exception as e:
         logger.exception("repeat-purchase-rate failed for %s to %s", start_date, end_date)
@@ -183,8 +183,8 @@ def sku_units_to_date_endpoint(user: str = Depends(verify_token)) -> dict:
     """Total units sold per SKU since inception - see get_sku_units_to_date's docstring for how
     this combines the hand-reconciled historical reference with a live current-month pull.
     No date params: this always means "everything up to today," not a selectable range."""
-    shopify = _get_shopify_context()
     try:
+        shopify = _get_shopify_context()
         return get_sku_units_to_date(shopify)
     except Exception as e:
         logger.exception("sku-units-to-date failed")
@@ -199,8 +199,8 @@ def cash_snapshot_endpoint(user: str = Depends(verify_token)) -> dict:
     (Overhead) breakdown by account. Obligations beyond Overhead aren't pulled here (no reliable
     automated source - the frontend keeps a manual-entry list for that instead). No date params -
     always "as of today," like /sku-units-to-date."""
-    qbo = _get_qbo_context()
     try:
+        qbo = _get_qbo_context()
         return get_cash_snapshot(qbo)
     except Exception as e:
         logger.exception("cash-snapshot failed")
