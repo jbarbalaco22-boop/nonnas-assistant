@@ -1097,7 +1097,7 @@
     discountRate: "Total discounts given, as a percent of gross sales before discounts.",
     refundRate: "Total refunds, as a percent of gross sales before refunds.",
     ordersUnits: "Source: Shopify order data.",
-    limitedData: "Amazon orders rarely flow through Shopify at all (no direct Amazon connection yet). Wholesale revenue is typically recorded as a bank deposit with no item/quantity, so it often shows zero units even when real sales happened. Treat DTC and TikTok as reliable; Amazon and Wholesale as directional at best.",
+    limitedData: "Orders and Units come from Shopify's order data, which is unreliable for these two channels specifically — Amazon orders rarely flow through Shopify at all (no direct Amazon connection yet), and Wholesale revenue is typically recorded as a bank deposit with no item/quantity attached. Everything else on this card (Net Sales, Contribution, Discount/Refund Rate, ROAS, Ad Spend) comes from QuickBooks directly and is just as reliable here as for DTC/TikTok.",
     wholesaleEmpty: "Wholesale revenue is typically recorded as a bank deposit with no item detail, so this may under-report — a real Wholesale sale can still have happened even when no orders show up here.",
     skuRevenue: "On-demand only — pulls fresh every time you click, nothing is cached. Uses the date range selected above. Currently covers DTC only (recovered from transaction memo text, since QuickBooks has no structured per-SKU field yet) — other channels' real SKU activity won't show up here, not because there wasn't any. Revenue here settles a few days behind actual sales, so units sold on the Shopify side for recent days will often be ahead of what's shown here — that's a timing gap, not missing sales. Older transactions (before SKU tagging was turned on in the connector) are attributed to Nonna's Olive Oil (500mL Original), the only SKU that was selling then — this stops happening automatically once a second SKU goes active. Net here won't match DTC's Net Sales above by design — shipping revenue isn't tied to a specific SKU, so it's left out here (everything else — product revenue, discounts, refunds — is the same underlying QuickBooks accounts as DTC's Net Sales figure).",
     skuUnits: "\"Since Inception\" is every unit ever sold, combining a hand-reconciled historical reference (Shopify's own order history doesn't reach back more than ~60 days) with a live pull for whatever's more recent. \"For Selected Period\" uses the date range chosen above, combining the same two sources whenever the range reaches past that ~60-day window — any stretch covered by neither source shows up as a note below the table rather than being silently dropped. Pack-size SKUs (e.g. a 3-pack) show real bottle-equivalent units, with the raw order count underneath.",
@@ -1206,17 +1206,31 @@
   }
 
   // ---- Channel cards: full detail for real-volume channels, a quieter "muted" card for
-  // ~0%-revenue/Limited-Data channels, and a compact empty state for channels with nothing at
-  // all this period - rather than nine fields of zeros getting the same visual weight as DTC.
+  // low-revenue-share channels, and a compact empty state for channels with nothing at all this
+  // period - rather than nine fields of zeros getting the same visual weight as DTC. Amazon and
+  // Wholesale no longer get forced into "muted" just for being Amazon/Wholesale (2026-08-19) -
+  // Net Sales, Contribution, Discount/Refund Rate, ROAS, and Ad Spend are all QBO-account-based
+  // for every channel, equally reliable regardless of channel. Only Orders/AOV/Units are
+  // Shopify-order-sourced and genuinely unreliable for these two (see SHOPIFY_UNRELIABLE_ORDERS'
+  // comment) - buildFullChannelCard omits just those three fields for them, rather than hiding
+  // the whole card's worth of real QBO data behind a blanket "Limited" label.
   function classifyChannel(ch, m) {
     if (m.net_sales === 0 && m.orders === 0) return "empty";
-    if (UNRELIABLE_CHANNELS.has(ch) || m.revenue_share < 0.03) return "muted";
+    if (m.revenue_share < 0.03) return "muted";
     return "full";
   }
+  // Shopify's order/unit data specifically (not QBO's revenue/margin data) is unreliable for
+  // these two - Amazon orders rarely flow through Shopify at all, and Wholesale revenue is
+  // typically a bank deposit with no item/quantity attached. See TOOLTIPS.limitedData.
+  const SHOPIFY_UNRELIABLE_ORDERS = UNRELIABLE_CHANNELS;
   function buildFullChannelCard(ch, m, priorPeriod, rangeLabel) {
     const contribClass = m.contribution >= 0 ? "positive" : "negative";
     const priorContribution = priorPeriod && priorPeriod.channels[ch] ? priorPeriod.channels[ch].contribution : null;
     const deltaHtml = priorPeriod ? renderContributionDelta(m.contribution, priorContribution, rangeLabel) : "";
+    const ordersRow = SHOPIFY_UNRELIABLE_ORDERS.has(ch) ? "" : `
+        <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.orders)}</span></div>
+        <div><span class="metric-label">AOV</span><span>${fmtCurrency(m.aov)}</span></div>
+        <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.units)}</span></div>`;
     const card = document.createElement("div");
     card.className = "card channel-card";
     card.innerHTML = `
@@ -1227,15 +1241,14 @@
       ${deltaHtml}
       <div class="metric-row">
         <div><span class="metric-label">Net Sales</span><span>${fmtCurrency(m.net_sales)}</span></div>
-        <div><span class="metric-label">Orders${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.orders)}</span></div>
-        <div><span class="metric-label">AOV</span><span>${fmtCurrency(m.aov)}</span></div>
-        <div><span class="metric-label">Units${infoIcon("ordersUnits")}</span><span>${fmtNumber(m.units)}</span></div>
+        ${ordersRow}
         <div><span class="metric-label">Discount Rate${infoIcon("discountRate")}</span><span>${fmtPercent(m.discount_rate)}</span></div>
         <div><span class="metric-label">Refund Rate${infoIcon("refundRate")}</span><span>${fmtPercent(m.refund_rate)}</span></div>
         <div><span class="metric-label">ROAS${infoIcon("roas")}</span><span>${m.roas !== null && m.roas !== undefined ? m.roas.toFixed(1) + "x" : "—"}</span></div>
         <div><span class="metric-label">Ad Spend${infoIcon("ads")}</span><span>${fmtCurrency(m.ads)}</span></div>
         <div><span class="metric-label">Other Marketing${infoIcon("otherMarketing")}</span><span>${fmtCurrency(m.other_marketing)}</span></div>
       </div>
+      ${SHOPIFY_UNRELIABLE_ORDERS.has(ch) ? `<div class="muted-note">Orders/Units not shown${infoIcon("limitedData")}</div>` : ""}
     `;
     return card;
   }
@@ -1269,17 +1282,19 @@
   function buildSecondaryChannelCard(ch, m) {
     const card = document.createElement("div");
     card.className = "card channel-card secondary";
-    const chip = UNRELIABLE_CHANNELS.has(ch) ? `<span class="chip limited">Limited</span>` : "";
+    const unreliableOrders = SHOPIFY_UNRELIABLE_ORDERS.has(ch);
     const hasActivity = m.net_sales > 0 || m.orders > 0;
+    const ordersLine = unreliableOrders
+      ? `<div class="muted-note">Orders/Units not shown${infoIcon("limitedData")}</div>`
+      : `<div class="primary-stat-label">${fmtNumber(m.orders)} orders</div>`;
     const body = hasActivity
       ? `
         <div class="revenue-share">${fmtPercent(m.revenue_share)} of revenue</div>
         <div class="primary-stat" style="font-size:19px;color:var(--slate)">${fmtCurrency(m.net_sales)} <span style="font-size:11.5px;font-weight:500;color:var(--muted)">net sales</span></div>
-        <div class="primary-stat-label">${fmtNumber(m.orders)} orders</div>
-        <div class="muted-note">Limited data this period${infoIcon("limitedData")}</div>
+        ${ordersLine}
       `
       : `<div class="muted-note secondary-empty">No orders this period${ch === "Wholesale" ? infoIcon("wholesaleEmpty") : ""}</div>`;
-    card.innerHTML = `<h3>${channelIconHtml(ch)}${ch}${chip}</h3>${body}`;
+    card.innerHTML = `<h3>${channelIconHtml(ch)}${ch}</h3>${body}`;
     return card;
   }
   function renderChannelGrid(data, gridId, buildCard) {
