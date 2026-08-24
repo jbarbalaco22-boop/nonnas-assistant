@@ -717,7 +717,7 @@
                 <div class="card-header-row">
                   <h3>SKU Units <span class="beta-tag">Beta</span></h3>
                 </div>
-                <p class="sku-revenue-note" id="sku-units-note">Selected period, and the total since inception — how this works</p>
+                <p class="sku-revenue-note" id="sku-units-note">Units sold this period vs. lifetime total</p>
                 <div id="sku-units-status"></div>
                 <div id="sku-units-results"></div>
               </div>
@@ -2349,8 +2349,8 @@
         ? `This period: ${fmtDate(periodData.start_date)} – ${fmtDate(periodData.end_date)}`
         : `This period: ${periodResult.reason.message || "unavailable"}`,
       toDateData
-        ? `since inception through ${fmtDate(toDateData.live_to)} (reference through ${toDateData.reference_through || "—"})`
-        : `since inception: ${toDateResult.reason.message || "unavailable"}`,
+        ? `Lifetime: since business launch`
+        : `Lifetime: ${toDateResult.reason.message || "unavailable"}`,
     ];
     const asOf = (toDateData && toDateData.as_of) || (periodData && periodData.as_of);
     status.textContent = parts.join(" · ") + (asOf ? ` · as of ${fmtDateTime(asOf)}` : "");
