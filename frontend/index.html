@@ -219,7 +219,6 @@
   .delta.down { color: var(--error); }
   .delta.flat { color: var(--muted); }
   .run-rate-note { font-size: 11.5px; font-weight: 500; color: var(--muted); margin-top: 4px; }
-  .stat-sparkline { width: 110px; max-width: 100%; margin-top: 8px; }
   .positive { color: var(--success); }
   .negative { color: var(--error); }
 
@@ -1398,9 +1397,9 @@
     document.getElementById("company-card").innerHTML = `
       <h2>Company Overview</h2>
       <div id="company-stats">
-        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}${runRateHtml}<div class="stat-sparkline" id="sparkline-net-sales"></div></div>
-        <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}<div class="stat-sparkline" id="sparkline-contribution"></div></div>
-        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(netIncomeDisplay)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}<div class="stat-sparkline" id="sparkline-net-income"></div></div>
+        <div class="stat"><div class="stat-value">${fmtCurrency(c.net_sales)}</div><div class="stat-label">Net Sales</div>${netSalesDelta}${runRateHtml}</div>
+        <div class="stat"><div class="stat-value ${contribClass}">${fmtSignedCurrency(c.contribution)}</div><div class="stat-label">Contribution (before overhead)${infoIcon("contribution")}</div>${contribDelta}</div>
+        <div class="stat"><div class="stat-value ${netIncomeClass}">${fmtSignedCurrency(netIncomeDisplay)}</div><div class="stat-label">Net Income${infoIcon("netIncome")}</div>${netIncomeDelta}</div>
       </div>
       <div id="contribution-note">Contribution excludes overhead — Net Income above is the real bottom line.</div>
       <div class="metric-row">
@@ -1424,41 +1423,8 @@
       ? `Amazon &amp; Wholesale data quality note${infoIcon("limitedData")}`
       : "";
 
-    // company-stats was just rebuilt via innerHTML above, wiping out any sparkline that was
-    // already drawn - redraw immediately if trend data has already loaded (true on every
-    // range-change re-render after the first page load). If trends haven't loaded yet (only
-    // possible on the very first render), loadTrends' own success handler draws them once
-    // they're in.
-    if (lastTrendsPeriods) renderKpiSparklines(lastTrendsPeriods);
   }
 
-  // Minimal inline trend indicator for a KPI card - no axis/gridlines/labels, just the shape of
-  // the last 6 months. Deliberately not clickable/hoverable like the full Trends charts below;
-  // it's a glance-only signal, and the full interactive chart is one scroll away for anyone who
-  // wants the real numbers (real UI review finding, 2026-08-18: KPI cards showed just a number +
-  // delta with no visual trend until scrolling down to the separate Trends section).
-  function renderSparkline(containerId, values, color) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const width = 110, height = 28;
-    const min = Math.min(...values), max = Math.max(...values);
-    const range = max - min || 1;
-    const xStep = values.length > 1 ? width / (values.length - 1) : 0;
-    const points = values.map((v, i) => [i * xStep, height - 2 - ((v - min) / range) * (height - 4)]);
-    const pathD = points.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
-    const [lastX, lastY] = points[points.length - 1];
-    container.innerHTML = `
-      <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:${height}px;display:block;">
-        <path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" />
-        <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.25" fill="${color}" />
-      </svg>
-    `;
-  }
-  function renderKpiSparklines(periods) {
-    renderSparkline("sparkline-net-sales", periods.map((p) => p.company.net_sales), "var(--accent)");
-    renderSparkline("sparkline-contribution", periods.map((p) => p.company.contribution), "var(--indigo)");
-    renderSparkline("sparkline-net-income", periods.map((p) => p.company.net_income), "var(--indigo)");
-  }
 
   // Retries a fetch on failure (network error or 502/503/504) with a short delay - covers the
   // Render backend's cold-start window, where the very first request(s) right after a page load
@@ -1878,7 +1844,6 @@
         return;
       }
       lastTrendsPeriods = data.periods;
-      renderKpiSparklines(data.periods); // company-stats is already on screen by now (dashboard loads first)
       trendsStatusOverview.style.display = "none";
       trendsGridOverview.style.display = "grid"; // must be visible before render*Chart() measures width
       renderTrendsOverview(data.periods);
