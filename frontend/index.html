@@ -696,6 +696,11 @@
                 <div id="chart-roas-by-channel"></div>
                 <div id="chart-legend-roas" class="chart-legend"></div>
               </div>
+              <div class="card chart-card">
+                <h3>AOV by Channel</h3>
+                <div id="chart-aov-by-channel"></div>
+                <div id="chart-legend-aov" class="chart-legend"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -1820,6 +1825,10 @@
     const roasSeries = buildChannelSeries(periods, labels, "roas", 1);
     renderMultiLineChart("chart-roas-by-channel", roasSeries, { format: (v) => v.toFixed(1) + "x", inProgressIndex: lastIdx });
     renderChartLegend("chart-legend-roas");
+
+    const aovSeries = buildChannelSeries(periods, labels, "aov", 1);
+    renderMultiLineChart("chart-aov-by-channel", aovSeries, { format: fmtCurrency, inProgressIndex: lastIdx });
+    renderChartLegend("chart-legend-aov");
   }
 
   let lastTrendsPeriods = null;  // so switchTab can lazily render the Channels tab's chart the
