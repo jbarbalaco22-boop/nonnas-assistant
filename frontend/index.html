@@ -2334,11 +2334,7 @@
         <tfoot><tr><td>Total</td><td>${fmtNumber(totalPeriod)}</td><td>${fmtNumber(totalToDate)}</td></tr></tfoot>
       </table>
     `;
-    const gapDays = (toDateData && toDateData.gap_days) || (periodData && periodData.gap_days) || [];
-    if (gapDays.length > 0) {
-      const gapText = gapDays.map((g) => `${fmtDate(g.start)}–${fmtDate(g.end)}`).join(", ");
-      results.insertAdjacentHTML("beforeend", `<p class="sku-revenue-note">No data available for: ${gapText} — outside both the live-retrievable window and the historical reference's whole-month coverage.</p>`);
-    }
+    results.insertAdjacentHTML("beforeend", `<p class="sku-revenue-note">Inventory combines hand-reconciled physical counts through Aug 3 with live transaction data after.</p>`);
   }
 
   async function fetchSkuUnitsPeriod() {
