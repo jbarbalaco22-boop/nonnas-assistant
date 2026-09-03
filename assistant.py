@@ -61,11 +61,25 @@ stating it as fact."""
 
 
 def _get_qbo_context() -> QboContext:
+    load_dotenv(override=True)
     client_id = require_env("QBO_CLIENT_ID")
     client_secret = require_env("QBO_CLIENT_SECRET")
     refresh_token = require_env("QBO_REFRESH_TOKEN")
     realm_id = require_env("QBO_REALM_ID")
-    tokens = refresh_access_token(client_id, client_secret, refresh_token)
+    try:
+        tokens = refresh_access_token(client_id, client_secret, refresh_token)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("nonnas_assistant")
+        logger.error(
+            "QBO token refresh failed. Client ID: %s, Realm ID: %s, "
+            "Refresh token length: %d, Environment: %s",
+            client_id[:10] + "..." if client_id else None,
+            realm_id,
+            len(refresh_token) if refresh_token else 0,
+            QBO_ENVIRONMENT,
+        )
+        raise
     _persist_refresh_token(tokens["refresh_token"])
     return QboContext(tokens["access_token"], realm_id, QBO_ENVIRONMENT)
 

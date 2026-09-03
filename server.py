@@ -98,8 +98,15 @@ def dashboard_endpoint(
         shopify = _get_shopify_context()
         return get_dashboard_data(qbo, shopify, start_date, end_date)
     except Exception as e:
-        logger.exception("dashboard failed for %s to %s", start_date, end_date)
-        raise HTTPException(status_code=502, detail=f"Failed to load dashboard: {e}") from e
+        logger.exception("dashboard failed for %s to %s: %s", start_date, end_date, str(e))
+        detail = str(e)
+        if "400" in detail and "oauth" in detail.lower():
+            detail = (
+                "QBO authentication failed. The refresh token may have expired. "
+                "Please run: python qb_auth.py to re-authorize, then update "
+                "QBO_REFRESH_TOKEN in Render's environment."
+            )
+        raise HTTPException(status_code=502, detail=f"Failed to load dashboard: {detail}") from e
 
 
 @app.get("/trends")
