@@ -124,8 +124,15 @@ def trends_endpoint(
         shopify = _get_shopify_context()
         return {"periods": get_monthly_trend(qbo, shopify, months)}
     except Exception as e:
-        logger.exception("trends failed for last %s months", months)
-        raise HTTPException(status_code=502, detail=f"Failed to load trends: {e}") from e
+        logger.exception("trends failed for last %s months: %s", months, str(e))
+        detail = str(e)
+        if "400" in detail and "oauth" in detail.lower():
+            detail = (
+                "QBO authentication failed. The refresh token may have expired. "
+                "Please run: python qb_auth.py to re-authorize, then update "
+                "QBO_REFRESH_TOKEN in Render's environment."
+            )
+        raise HTTPException(status_code=502, detail=f"Failed to load trends: {detail}") from e
 
 
 @app.get("/sku-revenue")
@@ -142,8 +149,15 @@ def sku_revenue_endpoint(
         qbo = _get_qbo_context()
         return get_sku_revenue_live(qbo, start_date, end_date)
     except Exception as e:
-        logger.exception("sku-revenue failed for %s to %s", start_date, end_date)
-        raise HTTPException(status_code=502, detail=f"Failed to load SKU revenue: {e}") from e
+        logger.exception("sku-revenue failed for %s to %s: %s", start_date, end_date, str(e))
+        detail = str(e)
+        if "400" in detail and "oauth" in detail.lower():
+            detail = (
+                "QBO authentication failed. The refresh token may have expired. "
+                "Please run: python qb_auth.py to re-authorize, then update "
+                "QBO_REFRESH_TOKEN in Render's environment."
+            )
+        raise HTTPException(status_code=502, detail=f"Failed to load SKU revenue: {detail}") from e
 
 
 @app.get("/sku-units")
@@ -181,8 +195,15 @@ def repeat_purchase_rate_endpoint(
         qbo = _get_qbo_context()
         return get_repeat_purchase_rate(shopify, qbo, start_date, end_date)
     except Exception as e:
-        logger.exception("repeat-purchase-rate failed for %s to %s", start_date, end_date)
-        raise HTTPException(status_code=502, detail=f"Failed to load repeat purchase rate: {e}") from e
+        logger.exception("repeat-purchase-rate failed for %s to %s: %s", start_date, end_date, str(e))
+        detail = str(e)
+        if "400" in detail and "oauth" in detail.lower():
+            detail = (
+                "QBO authentication failed. The refresh token may have expired. "
+                "Please run: python qb_auth.py to re-authorize, then update "
+                "QBO_REFRESH_TOKEN in Render's environment."
+            )
+        raise HTTPException(status_code=502, detail=f"Failed to load repeat purchase rate: {detail}") from e
 
 
 @app.get("/sku-units-to-date")
@@ -210,8 +231,15 @@ def cash_snapshot_endpoint(user: str = Depends(verify_token)) -> dict:
         qbo = _get_qbo_context()
         return get_cash_snapshot(qbo)
     except Exception as e:
-        logger.exception("cash-snapshot failed")
-        raise HTTPException(status_code=502, detail=f"Failed to load cash snapshot: {e}") from e
+        logger.exception("cash-snapshot failed: %s", str(e))
+        detail = str(e)
+        if "400" in detail and "oauth" in detail.lower():
+            detail = (
+                "QBO authentication failed. The refresh token may have expired. "
+                "Please run: python qb_auth.py to re-authorize, then update "
+                "QBO_REFRESH_TOKEN in Render's environment."
+            )
+        raise HTTPException(status_code=502, detail=f"Failed to load cash snapshot: {detail}") from e
 
 
 @app.post("/ask", response_model=AskResponse)
