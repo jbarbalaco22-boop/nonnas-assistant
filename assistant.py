@@ -15,7 +15,16 @@ from tools import TOOL_SCHEMAS, dispatch
 
 load_dotenv()
 
-QBO_ENVIRONMENT = os.environ.get("QBO_ENVIRONMENT", "sandbox")
+# QBO_ENVIRONMENT must be explicitly set (no safe default) - mismatched environment causes 400 errors
+QBO_ENVIRONMENT = os.environ.get("QBO_ENVIRONMENT")
+if not QBO_ENVIRONMENT:
+    import logging
+    logging.getLogger("nonnas_assistant").error(
+        "QBO_ENVIRONMENT not set in environment variables. Must be 'production' or 'sandbox'. "
+        "Set this in Render's environment variables to match where your refresh token was authorized."
+    )
+    raise ValueError("QBO_ENVIRONMENT must be set (typically 'production' for Render)")
+
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
 SYSTEM_PROMPT = f"""You are a financial Q&A assistant for Nonna's Italian Goods (Nonna's Olive \
