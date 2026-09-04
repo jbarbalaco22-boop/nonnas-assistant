@@ -61,25 +61,55 @@ stating it as fact."""
 
 
 def _get_qbo_context() -> QboContext:
-    load_dotenv(override=True)
+    import logging
+    from pathlib import Path
+    logger = logging.getLogger("nonnas_assistant")
+
+    # Reload .env file if it exists (for local dev), but don't override environment variables
+    # (so Render's dashboard-set variables take precedence)
+    env_file = Path(__file__).resolve().parent / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
     client_id = require_env("QBO_CLIENT_ID")
     client_secret = require_env("QBO_CLIENT_SECRET")
     refresh_token = require_env("QBO_REFRESH_TOKEN")
     realm_id = require_env("QBO_REALM_ID")
+
+    # Validate that all required credentials are present and non-empty
+    if not all([client_id, client_secret, refresh_token, realm_id]):
+        logger.error(
+            "Missing QBO credentials. Client ID: %s, Client Secret: %s, "
+            "Refresh Token: %s, Realm ID: %s",
+            "SET" if client_id else "MISSING",
+            "SET" if client_secret else "MISSING",
+            "SET" if refresh_token else "MISSING",
+            "SET" if realm_id else "MISSING",
+        )
+        raise ValueError("One or more QBO credentials are missing from environment")
+
+    logger.debug(
+        "QBO auth attempt. Client ID: %s..., Realm ID: %s, "
+        "Token length: %d, Environment: %s",
+        client_id[:10],
+        realm_id,
+        len(refresh_token),
+        QBO_ENVIRONMENT,
+    )
+
     try:
         tokens = refresh_access_token(client_id, client_secret, refresh_token)
     except Exception as e:
-        import logging
-        logger = logging.getLogger("nonnas_assistant")
         logger.error(
-            "QBO token refresh failed. Client ID: %s, Realm ID: %s, "
+            "QBO token refresh failed: %s\nClient ID: %s..., Realm ID: %s, "
             "Refresh token length: %d, Environment: %s",
-            client_id[:10] + "..." if client_id else None,
+            str(e),
+            client_id[:10],
             realm_id,
-            len(refresh_token) if refresh_token else 0,
+            len(refresh_token),
             QBO_ENVIRONMENT,
         )
         raise
+
     _persist_refresh_token(tokens["refresh_token"])
     return QboContext(tokens["access_token"], realm_id, QBO_ENVIRONMENT)
 
